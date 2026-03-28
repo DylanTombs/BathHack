@@ -129,7 +129,7 @@ const DoctorMarker: React.FC<{
 const HospitalModel: React.FC<{
   onBoundsReady: (bounds: THREE.Box3) => void;
 }> = ({ onBoundsReady }) => {
-  const { scene } = useGLTF('/hospital/scene.gltf');
+  const { scene } = useGLTF('/hospital/scene.glb', true);
   const boundsReported = useRef(false);
 
   const cloned = useMemo(() => {
@@ -162,7 +162,7 @@ const SceneContent: React.FC = () => {
     bounds.getCenter(center);
     const maxDim = Math.max(size.x, size.z);
 
-    camera.position.set(center.x, center.y + maxDim * 1.2, center.z + maxDim * 0.6);
+    camera.position.set(center.x, center.y + maxDim, center.z -80);
     camera.lookAt(center);
 
     forceUpdate();
