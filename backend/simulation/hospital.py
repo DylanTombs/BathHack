@@ -175,11 +175,25 @@ class Hospital:
         return dict(self._wards)
 
     def _sync_ward_occupancy(self) -> None:
+        from simulation.patient import PatientAgent
         for ward_name in ("general_ward", "icu"):
             ward = self._wards[ward_name]
-            ward.occupied = sum(
-                1 for b in ward.beds if b.occupied_by_patient_id is not None
-            )
+            count = 0
+            for b in ward.beds:
+                if b.occupied_by_patient_id is not None:
+                    # Only count if patient is not discharged or pending discharge
+                    # Defensive: import PatientAgent and check patient state
+                    try:
+                        pa = None
+                        # Find patient agent if available (engine sets hospital.patients)
+                        if hasattr(self, 'patients'):
+                            pa = self.patients.get(b.occupied_by_patient_id)
+                        if pa is None or (getattr(pa.patient, 'location', None) not in ('discharged',) and getattr(pa.patient, 'pending_destination', None) != 'discharged'):
+                            count += 1
+                    except Exception:
+                        # Fallback: count as occupied if info missing
+                        count += 1
+            ward.occupied = count
 
     # ── Bed management ────────────────────────────────────────────────────────
 

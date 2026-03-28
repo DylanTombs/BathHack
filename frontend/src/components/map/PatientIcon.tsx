@@ -35,8 +35,9 @@ export const PatientIcon: React.FC<Props> = ({ patient, cellSize, isSelected, on
   const cx = (patient.grid_x + 0.5) * cellSize;
   const cy = (patient.grid_y + 0.5) * cellSize;
   // Group origin is top-left of the circle bounding box; scale is applied around circle center (r,r)
-  const gx = cx - r;
-  const gy = cy - r;
+  // Shift overlay 8px down and right
+  const gx = cx - r + 8;
+  const gy = cy - r + 8;
 
   return (
     <motion.g

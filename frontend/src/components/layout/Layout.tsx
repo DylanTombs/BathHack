@@ -1,12 +1,9 @@
 import React from 'react';
 import { HospitalMap } from '../map/HospitalMap';
 import { ControlPanel } from '../controls/ControlPanel';
-import { OccupancyChart } from '../charts/OccupancyChart';
-import { QueueChart } from '../charts/QueueChart';
-import { ThroughputChart } from '../charts/ThroughputChart';
-import { EventLog } from '../event-log/EventLog';
 import { MetricsBanner } from './MetricsBanner';
 import { EntityDetailPanel } from './EntityDetailPanel';
+import { GraphOverlayPanel } from '../graphs/GraphOverlayPanel';
 import { useSimulationStore } from '../../store/simulationStore';
 import { useUIStore } from '../../store/uiStore';
 
@@ -35,27 +32,25 @@ export const Layout: React.FC = () => {
       {/* Metrics banner */}
       <MetricsBanner />
 
-      {/* Main layout: left panel | map | right panel */}
-      <div className="flex flex-1 gap-4 p-4 overflow-hidden" style={{ minHeight: 0 }}>
-        {/* Left: charts + controls */}
-        <div className="w-64 shrink-0 space-y-3 overflow-y-auto">
+      {/* Main layout: left controls | map */}
+      <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
+        <div className="w-48 shrink-0 p-4 space-y-3 overflow-y-auto border-r border-gray-200 bg-white">
           <ControlPanel />
-          <OccupancyChart />
-          <QueueChart />
-          <ThroughputChart />
         </div>
-
-        {/* Centre: hospital map */}
-        <div className="flex-1 overflow-auto">
+        <div className="flex-1 overflow-auto p-4">
           <HospitalMap />
         </div>
-
-        {/* Right: event log + entity detail */}
-        <div className="w-72 shrink-0 space-y-3 overflow-y-auto">
-          {isPanelOpen && <EntityDetailPanel />}
-          <EventLog />
-        </div>
       </div>
+
+      {/* Entity detail — fixed overlay, left of the graph panel */}
+      {isPanelOpen && (
+        <div className="fixed z-50" style={{ bottom: '24px', right: '448px' }}>
+          <EntityDetailPanel />
+        </div>
+      )}
+
+      {/* Always-visible graph/events panel */}
+      <GraphOverlayPanel />
     </div>
   );
 };
