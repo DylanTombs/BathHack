@@ -1,0 +1,11 @@
+# Simulation module (backend/simulation/) — stdlib only:
+#   random, dataclasses, asyncio, typing, enum, math, logging, time
+
+# Backend API (Agent 3 adds these):
+# fastapi>=0.110.0
+# uvicorn[standard]>=0.27.0
+# websockets>=12.0
+# python-dotenv>=1.0.0
+
+# LLM layer (Agent 2 adds these):
+# anthropic>=0.25.0
