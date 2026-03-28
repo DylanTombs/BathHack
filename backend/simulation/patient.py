@@ -335,11 +335,10 @@ class PatientAgent:
         p.deceased_tick = tick
         self._died_this_tick = True
 
-        cause = (
-            f"unattended for {p.wait_time_ticks} ticks (threshold: {p.fatal_wait_ticks})"
-            if p.assigned_doctor_id is None
-            else "fatal complication during treatment"
-        )
+        if p.assigned_doctor_id is None:
+            cause = f"left untreated with {p.diagnosis}"
+        else:
+            cause = f"fatal complication from {p.diagnosis}"
         logger.info("Tick %d: %s deceased — %s", tick, p.name, cause)
 
         return SimEvent(
@@ -347,7 +346,7 @@ class PatientAgent:
             event_type="patient_deceased",
             entity_id=p.id,
             entity_type="patient",
-            raw_description=f"{p.name} deceased — {cause}",
+            raw_description=f"{p.name} died — {cause}",
             llm_explanation=None,
             severity="critical",
         )
