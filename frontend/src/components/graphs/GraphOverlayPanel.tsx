@@ -221,7 +221,7 @@ export const GraphOverlayPanel: React.FC = () => {
       <button
         onClick={toggleRightPanel}
         className="fixed z-50 bg-white border border-gray-200 shadow-md rounded-full w-11 h-11 flex items-center justify-center text-xl font-bold text-gray-500 hover:text-gray-800 hover:shadow-lg transition-all"
-        style={{ top: '140px', right: rightPanelVisible ? '432px' : '24px' }}
+        style={{ top: '195px', right: rightPanelVisible ? '432px' : '24px' }}
         title={rightPanelVisible ? 'Hide panel' : 'Show panel'}
       >
         {rightPanelVisible ? '›' : '‹'}
@@ -230,7 +230,7 @@ export const GraphOverlayPanel: React.FC = () => {
     {rightPanelVisible && <div
       className="fixed z-40 bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col"
       style={{
-        top: '140px',
+        top: '195px',
         bottom: '24px',
         right: '24px',
         width: '400px',

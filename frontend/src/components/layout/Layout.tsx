@@ -15,7 +15,7 @@ export const Layout: React.FC = () => {
   const { requestExplanation } = useWebSocket();
 
   return (
-    <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
+    <div className="h-full bg-gray-100 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
@@ -36,7 +36,7 @@ export const Layout: React.FC = () => {
       <MetricsBanner />
 
       {/* Main layout: map fills space, fixed panels float over */}
-      <div className="flex-1 overflow-hidden" style={{ minHeight: 0 }}>
+      <div className="map-container flex-1" style={{ minHeight: 0 }}>
         <HospitalMap />
       </div>
 
@@ -44,7 +44,7 @@ export const Layout: React.FC = () => {
       {leftPanelVisible && (
         <div
           className="fixed z-40 bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col"
-          style={{ top: '140px', bottom: '24px', left: '24px', width: '400px' }}
+          style={{ top: '195px', bottom: '24px', left: '24px', width: '400px' }}
         >
           <div className="p-4 space-y-3 overflow-y-auto scrollbar-hidden flex flex-col h-full">
             <ControlPanel />
@@ -59,7 +59,7 @@ export const Layout: React.FC = () => {
       <button
         onClick={toggleLeftPanel}
         className="fixed z-50 bg-white border border-gray-200 shadow-md rounded-full w-11 h-11 flex items-center justify-center text-xl font-bold text-gray-500 hover:text-gray-800 hover:shadow-lg transition-all"
-        style={{ top: '140px', left: leftPanelVisible ? '432px' : '24px' }}
+        style={{ top: '195px', left: leftPanelVisible ? '432px' : '24px' }}
         title={leftPanelVisible ? 'Hide controls' : 'Show controls'}
       >
         {leftPanelVisible ? '‹' : '›'}
