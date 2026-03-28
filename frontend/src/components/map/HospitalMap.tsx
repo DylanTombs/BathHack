@@ -4,16 +4,17 @@ import { useUIStore } from '../../store/uiStore';
 
 export const HospitalMap: React.FC = () => {
   const iframeRef = useRef<HTMLIFrameElement>(null);
-  const patients = useSimulationStore(s => s.patients);
-  const doctors  = useSimulationStore(s => s.doctors);
-  const tick     = useSimulationStore(s => s.tick);
+  const patients      = useSimulationStore(s => s.patients);
+  const doctors       = useSimulationStore(s => s.doctors);
+  const tick          = useSimulationStore(s => s.tick);
+  const shortageTicks = useSimulationStore(s => s.shortageTicks);
 
   const pushState = useCallback(() => {
     iframeRef.current?.contentWindow?.postMessage(
-      { type: 'sim_state', patients, doctors, tick },
+      { type: 'sim_state', patients, doctors, tick, shortageTicks },
       '*'
     );
-  }, [patients, doctors, tick]);
+  }, [patients, doctors, tick, shortageTicks]);
 
   // Send on every tick
   useEffect(() => { pushState(); }, [pushState]);
