@@ -2,7 +2,7 @@ import React, { useMemo } from 'react';
 import { useSimulationStore } from '../../store/simulationStore';
 
 export const AISummary: React.FC = () => {
-  const { tick, simDatetime, patients, doctors, wards, metrics, events } = useSimulationStore();
+  const { tick, simDatetime, patients, doctors, wards, metrics } = useSimulationStore();
 
   // Compose detailed stats summary
   const stats = useMemo(() => {
@@ -34,14 +34,34 @@ export const AISummary: React.FC = () => {
     );
   }, [tick, simDatetime, patients, doctors, wards, metrics]);
 
-  // Find the latest event with an LLM explanation
-  const latestLLMEvent = useMemo(() => {
-    if (!events || events.length === 0) return null;
-    for (let i = events.length - 1; i >= 0; i--) {
-      if (events[i].llm_explanation) return events[i];
+  // Compose a semantic summary paragraph of the current hospital state
+  const summaryText = useMemo(() => {
+    if (!metrics || !wards['icu'] || !wards['general_ward']) return 'No summary available.';
+    const icuFull = metrics.icu_occupancy_pct >= 90;
+    const gwFull = metrics.general_ward_occupancy_pct >= 90;
+    const queue = metrics.current_queue_length;
+    const critical = metrics.critical_patients_waiting;
+    const drUtil = metrics.doctor_utilisation_pct;
+    let summary = `The hospital is currently at ${metrics.icu_occupancy_pct.toFixed(0)}% ICU occupancy and ${metrics.general_ward_occupancy_pct.toFixed(0)}% general ward occupancy.`;
+    if (icuFull && gwFull) {
+      summary += ' Both ICU and general ward are nearly full.';
+    } else if (icuFull) {
+      summary += ' ICU is nearly full.';
+    } else if (gwFull) {
+      summary += ' General ward is nearly full.';
     }
-    return null;
-  }, [events]);
+    if (queue > 0) {
+      summary += ` There are ${queue} patients waiting for beds.`;
+    }
+    if (critical > 0) {
+      summary += ` ${critical} critical patients are waiting for care.`;
+    }
+    summary += ` Doctor utilisation is at ${drUtil.toFixed(0)}%.`;
+    if (drUtil >= 90) {
+      summary += ' Doctors are highly utilised.';
+    }
+    return summary;
+  }, [metrics, wards]);
 
   return (
     <div className="bg-blue-50 border border-blue-200 rounded-lg p-4 shadow-sm flex flex-col h-full">
@@ -51,7 +71,7 @@ export const AISummary: React.FC = () => {
       <div className="mt-4">
         <div className="text-blue-900 text-base font-semibold mb-1">AI Interpretation</div>
         <div className="text-blue-800 text-sm whitespace-pre-line min-h-[4rem]">
-          {latestLLMEvent?.llm_explanation || 'No AI summary available yet.'}
+          {summaryText}
         </div>
       </div>
     </div>

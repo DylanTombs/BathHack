@@ -7,10 +7,12 @@ import { GraphOverlayPanel } from '../graphs/GraphOverlayPanel';
 import { useSimulationStore } from '../../store/simulationStore';
 import { useUIStore } from '../../store/uiStore';
 import { AISummary } from './AISummary';
+import { useWebSocket } from '../../hooks/useWebSocket';
 
 export const Layout: React.FC = () => {
   const { connected, tick } = useSimulationStore();
   const { isPanelOpen } = useUIStore();
+  const { requestExplanation } = useWebSocket();
 
   return (
     <div className="min-h-screen bg-gray-100 flex flex-col">
@@ -49,7 +51,7 @@ export const Layout: React.FC = () => {
       {/* Entity detail — fixed overlay, left of the graph panel */}
       {isPanelOpen && (
         <div className="fixed z-50" style={{ bottom: '24px', right: '448px' }}>
-          <EntityDetailPanel />
+          <EntityDetailPanel requestExplanation={requestExplanation} />
         </div>
       )}
 

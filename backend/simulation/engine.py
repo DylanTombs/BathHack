@@ -278,6 +278,30 @@ class SimulationEngine:
         self.doctors.append(da)
         logger.info("Added %s doctor (id=%d). Total doctors: %d", specialty, new_id, len(self.doctors))
 
+    def add_bed(self, ward: str, count: int = 1) -> None:
+        """Add beds to a ward mid-simulation."""
+        if ward == "general_ward":
+            self.hospital.add_general_beds(count)
+        elif ward == "icu":
+            self.hospital.add_icu_beds(count)
+        else:
+            logger.warning("Unknown ward %r — bed not added", ward)
+            return
+        new_capacity = self.hospital._wards[ward].capacity
+        logger.info("Added %d bed(s) to %s. Capacity now: %d", count, ward, new_capacity)
+
+    def remove_bed(self, ward: str, count: int = 1) -> None:
+        """Remove unoccupied beds from a ward mid-simulation."""
+        if ward == "general_ward":
+            self.hospital.remove_general_beds(count)
+        elif ward == "icu":
+            self.hospital.remove_icu_beds(count)
+        else:
+            logger.warning("Unknown ward %r — bed not removed", ward)
+            return
+        new_capacity = self.hospital._wards[ward].capacity
+        logger.info("Removed %d bed(s) from %s. Capacity now: %d", count, ward, new_capacity)
+
     def remove_doctor(self) -> None:
         """Remove the most recently added doctor (keep at least 1)."""
         if len(self.doctors) <= 1:

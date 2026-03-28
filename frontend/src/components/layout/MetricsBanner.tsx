@@ -69,6 +69,12 @@ export const MetricsBanner: React.FC = () => {
           highlightColor="bg-red-100"
         />
         <MetricCard
+          label="General Ward"
+          value={`${(metrics?.general_ward_occupancy_pct ?? 0).toFixed(0)}%`}
+          highlight={(metrics?.general_ward_occupancy_pct ?? 0) >= 90}
+          highlightColor="bg-yellow-100"
+        />
+        <MetricCard
           label="Critical Waiting"
           value={metrics?.critical_patients_waiting ?? 0}
           highlight={(metrics?.critical_patients_waiting ?? 0) > 0}
