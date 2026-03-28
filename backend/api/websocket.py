@@ -186,20 +186,46 @@ async def _handle_command(
     elif command == "update_config":
         raw_config = msg.get("config", {})
         try:
-            from simulation.types import ScenarioConfig
-            cfg = ScenarioConfig(**raw_config)
-            engine.apply_config(cfg)
+            if "arrival_rate_per_tick" in raw_config:
+                engine._arrival_rate = float(raw_config["arrival_rate_per_tick"])
+                engine.config.arrival_rate_per_tick = engine._arrival_rate
+            # Accept both legacy and explicit names from clients.
+            if "tick_speed_seconds" in raw_config:
+                tick_seconds = float(raw_config["tick_speed_seconds"])
+                engine.config.tick_interval_seconds = max(0.1, min(5.0, tick_seconds))
+            if "tick_interval_seconds" in raw_config:
+                tick_seconds = float(raw_config["tick_interval_seconds"])
+                engine.config.tick_interval_seconds = max(0.1, min(5.0, tick_seconds))
             await manager.send_to(ws, {
                 "type": "config_ack",
                 "config": raw_config,
                 "tick": engine.current_tick,
             })
-        except (TypeError, KeyError) as exc:
+        except Exception as exc:
             await manager.send_to(ws, {
                 "type": "error",
                 "message": f"Invalid config: {exc}",
                 "tick": engine.current_tick,
             })
+
+    elif command == "add_doctor":
+        specialty = msg.get("specialty", "General")
+        engine.add_doctor(specialty)
+        await manager.send_to(ws, {
+            "type": "command_ack",
+            "command": "add_doctor",
+            "is_running": engine.is_running,
+            "tick": engine.current_tick,
+        })
+
+    elif command == "remove_doctor":
+        engine.remove_doctor()
+        await manager.send_to(ws, {
+            "type": "command_ack",
+            "command": "remove_doctor",
+            "is_running": engine.is_running,
+            "tick": engine.current_tick,
+        })
 
     elif command == "explain_patient":
         target_id = msg.get("target_id")

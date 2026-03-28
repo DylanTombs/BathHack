@@ -8,12 +8,16 @@ Used for:
 """
 from __future__ import annotations
 
+import random
+
 from simulation.types import (
     DoctorContext,
     DoctorDecision,
     PatientContext,
     PatientUpdate,
     SimEvent,
+    ArrivalContext,
+    PatientSpec,
 )
 
 
@@ -76,3 +80,38 @@ class MockLLMInterface:
         Return a simple explanation string prefixed with [MOCK].
         """
         return f"[MOCK] {event.raw_description}"
+
+    async def generate_patient_batch(
+        self,
+        context: ArrivalContext,
+        fallback_fn,
+    ) -> list[PatientSpec]:
+        """
+        Time-of-day heuristic patient generation — no external API call.
+        Used for tests and development without an API key.
+        """
+        from simulation.patient import _make_random_spec
+
+        hour = context.hour_of_day
+        if 0 <= hour < 5:
+            count = random.randint(0, 1)
+        elif 5 <= hour < 9:
+            count = random.randint(1, 2)
+        elif 9 <= hour < 17:
+            count = random.randint(1, 3)
+        elif 17 <= hour < 22:
+            count = random.randint(2, 4)
+        else:
+            count = random.randint(1, 3)
+
+        if context.surge_active:
+            count = max(count, random.randint(3, 6))
+
+        if context.surge_active:
+            sev_pool = ["critical", "critical", "medium", "medium", "low"]
+        elif 17 <= hour < 22 or (hour >= 22 or hour < 5):
+            sev_pool = ["medium", "medium", "critical", "low"]
+        else:
+            sev_pool = ["low", "low", "low", "medium", "medium", "critical"]
+
+        return [_make_random_spec(random.choice(sev_pool)) for _ in range(count)]

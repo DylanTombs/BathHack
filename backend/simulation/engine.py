@@ -30,9 +30,11 @@ from simulation.types import (
     SimEvent,
     SimulationState,
     MetricsSnapshot,
+    ArrivalContext,
+    PatientSpec,
 )
 from simulation.hospital import Hospital
-from simulation.patient import PatientAgent
+from simulation.patient import PatientAgent, _make_random_spec
 from simulation.doctor import DoctorAgent
 from simulation.queue_manager import PriorityQueue
 from simulation.metrics import MetricsCollector
@@ -52,12 +54,38 @@ PATIENT_REEVAL_EVERY_N_TICKS = 5
 DOCTOR_LLM_COOLDOWN_TICKS = 3
 CRITICAL_WAIT_THRESHOLD_TICKS = 4
 MAX_WAIT_BEFORE_DEATH_TICKS = 15
-SURGE_DURATION_TICKS = 10
-SHORTAGE_DURATION_TICKS = 8
+SURGE_DURATION_TICKS = 4
+SHORTAGE_DURATION_TICKS = 4
 METRICS_HISTORY_BUFFER = 100
 
-# Severity distribution during a surge (overrides normal 60/30/10)
-_SURGE_SEVERITY_WEIGHTS = [("low", 0.20), ("medium", 0.30), ("critical", 0.50)]
+# Severity rank for priority resolution
+_SEVERITY_RANK = {"critical": 2, "medium": 1, "low": 0}
+
+# Severity distribution during a surge (still elevated acuity, but realistic)
+_SURGE_SEVERITY_WEIGHTS = [("low", 0.45), ("medium", 0.35), ("critical", 0.20)]
+
+# Simulated calendar — tick 0 = Monday 06:00, each tick = 15 simulated minutes
+_SIM_START_DAY = 0    # 0=Monday
+_SIM_START_HOUR = 6   # 06:00
+_SIM_MINS_PER_TICK = 15
+_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def _sim_datetime(tick: int) -> str:
+    """Return a human-readable simulated datetime string for a given tick."""
+    total_minutes = _SIM_START_HOUR * 60 + tick * _SIM_MINS_PER_TICK
+    hour = (total_minutes // 60) % 24
+    minute = total_minutes % 60
+    day = (_SIM_START_DAY + total_minutes // (24 * 60)) % 7
+    return f"{_DAY_NAMES[day]} {hour:02d}:{minute:02d}"
+
+
+def _sim_hour_day(tick: int) -> tuple[int, int, str]:
+    """Return (hour_of_day, day_of_week, day_name) for a given tick."""
+    total_minutes = _SIM_START_HOUR * 60 + tick * _SIM_MINS_PER_TICK
+    hour = (total_minutes // 60) % 24
+    day = (_SIM_START_DAY + total_minutes // (24 * 60)) % 7
+    return hour, day, _DAY_NAMES[day]
 
 
 class SimulationEngine:
@@ -96,7 +124,7 @@ class SimulationEngine:
 
         # Shortage state
         self._shortage_ticks_remaining: int = 0
-        self._incapacitated_doctor_ids: list[int] = []
+        self._benched_doctors: list[DoctorAgent] = []  # physically removed during shortage
 
         # Effective arrival rate (can be modified by apply_config or surge)
         self._arrival_rate: float = config.arrival_rate_per_tick
@@ -142,7 +170,7 @@ class SimulationEngine:
         self._update_scenario_timers()
 
         # ── Step 1: Arrivals ───────────────────────────────────────────────
-        new_patients = self._generate_arrivals()
+        new_patients = await self._generate_arrivals()
         for pa in new_patients:
             self.patients[pa.patient.id] = pa
             self.queue.push(pa)
@@ -172,8 +200,11 @@ class SimulationEngine:
         assignment_events = await self._run_doctor_assignments()
         self._events_this_tick.extend(assignment_events)
 
-        # ── Step 4: Bed assignment (new arrivals + ICU escalations) ───────
-        self._assign_beds()
+        # ── Step 4: Resolve pending destinations + auto-route ─────────────
+        self._resolve_pending_destinations()
+
+        # ── Step 4b: Escalate critical patients to ICU when space opens ───
+        self._escalate_critical_to_icu()
 
         # ── Step 5: Discharge completed patients ──────────────────────────
         self._discharge_patients()
@@ -240,6 +271,22 @@ class SimulationEngine:
 
         self._arrival_rate = config.arrival_rate_per_tick
 
+    def add_doctor(self, specialty: str = "General") -> None:
+        """Add a new doctor with the given specialty mid-simulation."""
+        new_id = max((d.doctor.id for d in self.doctors), default=0) + 1
+        da = DoctorAgent.create_with_specialty(new_id, specialty, self.llm_callback)
+        self.doctors.append(da)
+        logger.info("Added %s doctor (id=%d). Total doctors: %d", specialty, new_id, len(self.doctors))
+
+    def remove_doctor(self) -> None:
+        """Remove the most recently added doctor (keep at least 1)."""
+        if len(self.doctors) <= 1:
+            logger.warning("Cannot remove last doctor")
+            return
+        removed = self.doctors.pop()
+        logger.info("Removed %s (id=%d). Total doctors: %d",
+                    removed.doctor.name, removed.doctor.id, len(self.doctors))
+
     def trigger_surge(self) -> None:
         """
         Mass casualty event:
@@ -263,19 +310,27 @@ class SimulationEngine:
 
     def trigger_shortage(self) -> None:
         """
-        Staff shortage:
-          - 50% of doctors randomly incapacitated for SHORTAGE_DURATION_TICKS ticks
-          - Emit staff_shortage event
+        Staff shortage: physically remove all but 1 doctor per specialty.
+        Benched doctors are restored on trigger_recovery() or when the timer expires.
         """
-        available_ids = [d.doctor.id for d in self.doctors]
-        n_incapacitate = max(1, len(available_ids) // 2)
-        self._incapacitated_doctor_ids = random.sample(available_ids, n_incapacitate)
+        from collections import defaultdict
+        by_specialty: dict[str, list] = defaultdict(list)
+        for d in self.doctors:
+            by_specialty[d.doctor.specialty].append(d)
+
+        active = []
+        benched = []
+        for doctors_in_spec in by_specialty.values():
+            active.append(doctors_in_spec[0])   # keep first of each specialty
+            benched.extend(doctors_in_spec[1:]) # bench the rest
+
+        self._benched_doctors = benched
+        self.doctors = active
         self._shortage_ticks_remaining = SHORTAGE_DURATION_TICKS
         self._scenario = "shortage"
         logger.info(
-            "Shortage triggered at tick %d; doctors incapacitated: %s",
-            self._tick,
-            self._incapacitated_doctor_ids,
+            "Shortage triggered at tick %d; %d active, %d benched (1 per specialty kept)",
+            self._tick, len(active), len(benched),
         )
         self._events_this_tick.append(SimEvent(
             tick=self._tick,
@@ -283,19 +338,22 @@ class SimulationEngine:
             entity_id=0,
             entity_type="doctor",
             raw_description=(
-                f"Staff shortage: {n_incapacitate} of {len(available_ids)} doctors "
-                f"unavailable for {SHORTAGE_DURATION_TICKS} ticks"
+                f"Staff shortage: reduced to 1 doctor per specialty "
+                f"({len(active)} active, {len(benched)} stood down)"
             ),
             llm_explanation=None,
             severity="critical",
         ))
 
     def trigger_recovery(self) -> None:
-        """Reset scenario to normal."""
+        """Reset scenario to normal — restores benched doctors and default arrival rate."""
         self._surge_ticks_remaining = 0
         self._surge_arrival_multiplier = 1.0
         self._shortage_ticks_remaining = 0
-        self._incapacitated_doctor_ids = []
+        self._arrival_rate = self.config.arrival_rate_per_tick
+        if self._benched_doctors:
+            self.doctors.extend(self._benched_doctors)
+            self._benched_doctors = []
         self._scenario = "normal"
         logger.info("Recovery triggered at tick %d", self._tick)
 
@@ -344,7 +402,7 @@ class SimulationEngine:
         self._surge_ticks_remaining = 0
         self._surge_arrival_multiplier = 1.0
         self._shortage_ticks_remaining = 0
-        self._incapacitated_doctor_ids = []
+        self._benched_doctors = []
         self._arrival_rate = self.config.arrival_rate_per_tick
         self._init_doctors()
 
@@ -374,42 +432,70 @@ class SimulationEngine:
         if self._shortage_ticks_remaining > 0:
             self._shortage_ticks_remaining -= 1
             if self._shortage_ticks_remaining == 0:
-                self._incapacitated_doctor_ids = []
+                if self._benched_doctors:
+                    self.doctors.extend(self._benched_doctors)
+                    self._benched_doctors = []
                 if self._scenario == "shortage":
                     self._scenario = "normal"
 
-    def _generate_arrivals(self) -> list[PatientAgent]:
+    async def _generate_arrivals(self) -> list[PatientAgent]:
         """
-        Draw from Poisson(arrival_rate * surge_multiplier).
-        During surge: use _SURGE_SEVERITY_WEIGHTS for severity distribution.
+        Generate new patient arrivals for this tick.
+
+        Primary path (LLM): calls generate_patient_batch with time/hospital context;
+        LLM decides count and generates coherent patient identities.
+
+        Fallback path (rule-based): Poisson draw + static-pool random assembly,
+        identical to the original behaviour.
         """
         rate = self._arrival_rate * self._surge_arrival_multiplier
-        # Poisson draw via sum of Geometric rv (classic approximation using random)
-        n_arrivals = _poisson_draw(rate)
+        poisson_count = _poisson_draw(rate)
+
+        def _fallback_specs() -> list[PatientSpec]:
+            specs = []
+            for _ in range(poisson_count):
+                force_sev = None
+                if self._surge_ticks_remaining > 0:
+                    r, cum = random.random(), 0.0
+                    for sev, w in _SURGE_SEVERITY_WEIGHTS:
+                        cum += w
+                        if r < cum:
+                            force_sev = sev  # type: ignore[assignment]
+                            break
+                specs.append(_make_random_spec(force_sev))
+            return specs
+
+        generate_fn = getattr(self.llm_callback, "generate_patient_batch", None)
+        if generate_fn is None:
+            specs = _fallback_specs()
+        else:
+            metrics = self.get_metrics()
+            hour, day, day_name = _sim_hour_day(self._tick)
+            ctx = ArrivalContext(
+                tick=self._tick,
+                hour_of_day=hour,
+                day_of_week=day,
+                day_name=day_name,
+                sim_datetime=_sim_datetime(self._tick),
+                scenario=self._scenario,
+                surge_active=self._surge_ticks_remaining > 0,
+                current_queue_length=metrics.current_queue_length,
+                general_ward_occupancy_pct=metrics.general_ward_occupancy_pct,
+                icu_occupancy_pct=metrics.icu_occupancy_pct,
+                arrival_rate_hint=rate,
+            )
+            specs = await generate_fn(ctx, _fallback_specs)
 
         arrivals = []
-        for _ in range(n_arrivals):
+        for spec in specs:
             pid = self._next_patient_id()
-            # During surge: force higher severity distribution
-            force_sev = None
-            if self._surge_ticks_remaining > 0:
-                r = random.random()
-                cumulative = 0.0
-                for sev, weight in _SURGE_SEVERITY_WEIGHTS:
-                    cumulative += weight
-                    if r < cumulative:
-                        force_sev = sev  # type: ignore[assignment]
-                        break
-
-            pa = PatientAgent.create_new(
+            arrivals.append(PatientAgent.create_from_spec(
                 patient_id=pid,
                 tick=self._tick,
                 hospital=self.hospital,
+                spec=spec,
                 llm_callback=self.llm_callback,
-                force_severity=force_sev,
-            )
-            arrivals.append(pa)
-
+            ))
         return arrivals
 
     async def _update_patients(self) -> list[SimEvent]:
@@ -427,116 +513,256 @@ class SimulationEngine:
 
     async def _run_doctor_assignments(self) -> list[SimEvent]:
         """
-        For each available doctor (not incapacitated):
-          - Get all unassigned patients from queue
-          - Call doctor.tick() which assigns patients up to capacity
-          - Remove assigned patients from queue
+        Ward-scoped doctor assignment:
+          - Triage doctors (ward="waiting") see only waiting patients with no pending destination
+          - Ward doctors see only unassigned patients in their ward
+          - Routing actions are handled immediately after each doctor's turn
         """
         events: list[SimEvent] = []
 
         for doctor_agent in self.doctors:
-            # Skip incapacitated doctors during shortage
-            if doctor_agent.doctor.id in self._incapacitated_doctor_ids:
-                continue
             if not doctor_agent.doctor.is_available:
                 continue
 
-            # Candidates = all unassigned patients in the queue
-            candidates = self.queue.get_all()
+            doctor_ward = doctor_agent.doctor.ward
+            if doctor_ward == "waiting":
+                # Triage: only patients in waiting zone who haven't been routed yet
+                candidates = [
+                    pa for pa in self.queue.get_all()
+                    if pa.patient.location == "waiting"
+                    and pa.patient.pending_destination is None
+                ]
+            else:
+                # General/ICU: unassigned patients already in this ward
+                candidates = [
+                    pa for pa in self.queue.get_all()
+                    if pa.patient.location == doctor_ward
+                ]
+
             if not candidates:
-                break
+                continue
 
             doctor_events = await doctor_agent.tick(
                 self._tick, candidates, self.hospital
             )
             events.extend(doctor_events)
 
-            # Remove newly-assigned patients from queue
-            for ev in doctor_events:
-                if ev.event_type == "doctor_decision":
-                    # Find the patient who was just assigned to this doctor
-                    # by looking at what changed in the doctor's list
-                    # The last assigned patient is the one in doctor_events
-                    pass
-
-            # Clean way: after tick, remove any patient whose assigned_doctor_id is now set
+            # Remove treated patients (assigned_doctor_id set) from queue
             for pa in list(self.queue.get_all()):
                 if pa.patient.assigned_doctor_id is not None:
                     self.queue.remove(pa.patient.id)
 
+            # Process routing actions immediately — assign beds NOW so capacity is accurate
+            for pa in list(self.patients.values()):
+                action = getattr(pa, "_pending_route_action", None)
+                if action is None:
+                    continue
+                stay = getattr(pa, "_pending_discharge_stay", None)
+                dis_sev = getattr(pa, "_pending_discharge_severity", None)
+                dis_cond = getattr(pa, "_pending_discharge_condition", None)
+                treatment_ticks = getattr(pa, "_pending_treatment_ticks", None)
+                for attr in ("_pending_route_action", "_pending_discharge_stay",
+                             "_pending_discharge_severity", "_pending_discharge_condition",
+                             "_pending_treatment_ticks"):
+                    if hasattr(pa, attr):
+                        delattr(pa, attr)
+                self.queue.remove(pa.patient.id)
+                if action == "discharge":
+                    self._move_to_discharge(pa, stay or 2, dis_sev, dis_cond)
+                else:
+                    if treatment_ticks is not None:
+                        pa.patient.treatment_duration_ticks = treatment_ticks
+                    orig_location = pa.patient.location
+                    dest = action
+                    if orig_location in ("general_ward", "icu"):
+                        # Ward-to-ward transfer: free old bed FIRST to avoid map overwrite bug
+                        if dest == "icu" and self.hospital.free_beds_in("icu") == 0:
+                            dest = "general_ward"
+                        if self.hospital.free_beds_in(dest) > 0:
+                            self.hospital.free_bed(pa.patient.id)
+                            for da in self.doctors:
+                                if pa.patient.id in da.doctor.assigned_patient_ids:
+                                    da.doctor.assigned_patient_ids.remove(pa.patient.id)
+                                    da._update_workload()
+                                    break
+                            pa.patient.assigned_doctor_id = None
+                            pa.patient.treatment_started_tick = None
+                            bed = self.hospital.assign_bed(pa.patient.id, dest)
+                            if bed:
+                                pa.patient.location = dest
+                                pa.patient.grid_x = bed.grid_x
+                                pa.patient.grid_y = bed.grid_y
+                                pa.patient.pending_destination = None
+                                self.queue.push(pa)
+                            else:
+                                pa.patient.pending_destination = action
+                                self.queue.push(pa)
+                        else:
+                            pa.patient.pending_destination = action
+                            self.queue.push(pa)
+                    else:
+                        # From waiting: assign bed directly
+                        bed = self.hospital.assign_bed(pa.patient.id, dest)
+                        if bed is None and dest == "icu":
+                            # ICU full — fall back to general_ward
+                            dest = "general_ward"
+                            bed = self.hospital.assign_bed(pa.patient.id, dest)
+                        if bed is not None:
+                            self.hospital.release_waiting_slot(pa.patient.id)
+                            pa.patient.location = dest
+                            pa.patient.grid_x = bed.grid_x
+                            pa.patient.grid_y = bed.grid_y
+                            pa.patient.pending_destination = None
+                            self.queue.push(pa)  # re-add so ward doctors can treat them
+                        else:
+                            # Both wards full — keep visible in queue with pending dest for retry
+                            pa.patient.pending_destination = action
+                            self.queue.push(pa)
+
         return events
 
-    def _assign_beds(self) -> None:
+    def _resolve_pending_destinations(self) -> None:
         """
-        For each patient without a bed:
-          - critical → try ICU first, then general ward
-          - medium/low → general ward only
-        Also handle ICU escalation for worsening critical patients in general_ward.
-        Sets patient.location and grid_x/y based on assigned bed.
+        Retry bed assignment for patients who still have a pending_destination because
+        both wards were full when routing was first processed.
+        Falls back from ICU to general_ward if ICU is still full.
+        Patients who still can't get a bed remain in the queue for the next tick.
         """
-        # Phase A: assign beds to patients who just arrived (location="waiting", no bed)
-        for pa in list(self.patients.values()):
+        pending = sorted(
+            [pa for pa in self.patients.values()
+             if pa.patient.pending_destination and pa.patient.location == "waiting"],
+            key=lambda pa: -_SEVERITY_RANK[pa.patient.severity],
+        )
+        for pa in pending:
             p = pa.patient
-            if p.location != "waiting":
-                continue
-            if self.hospital.get_bed_for_patient(p.id) is not None:
-                continue  # already has a bed
-
-            if p.severity == "critical":
-                # Try ICU first
-                bed = self.hospital.assign_bed(p.id, "icu")
-                if bed:
-                    p.location = "icu"
-                    p.grid_x = bed.grid_x
-                    p.grid_y = bed.grid_y
-                    # Release waiting slot
-                    self.hospital.release_waiting_slot(p.id)
-                    continue
-                # Fall through to general ward
-
-            # Medium / low (or critical when ICU full) → general ward
-            bed = self.hospital.assign_bed(p.id, "general_ward")
-            if bed:
-                p.location = "general_ward"
+            dest = p.pending_destination
+            bed = self.hospital.assign_bed(p.id, dest)
+            if bed is None and dest == "icu":
+                dest = "general_ward"
+                bed = self.hospital.assign_bed(p.id, dest)
+            if bed is not None:
+                self.hospital.release_waiting_slot(p.id)
+                p.location = dest
                 p.grid_x = bed.grid_x
                 p.grid_y = bed.grid_y
-                self.hospital.release_waiting_slot(p.id)
+                p.pending_destination = None
+                self.queue.push(pa)
+            # If still no bed: patient stays in queue with pending_destination for next tick
 
-        # Phase B: ICU escalation — worsening critical patients currently in general_ward
-        for pa in list(self.patients.values()):
-            p = pa.patient
-            if (
-                p.location == "general_ward"
-                and p.severity == "critical"
-                and p.condition == "worsening"
-                and not self.hospital.is_ward_full("icu")
-            ):
-                # Free general ward bed
-                self.hospital.free_bed(p.id)
-                # Assign ICU bed
-                icu_bed = self.hospital.assign_bed(p.id, "icu")
-                if icu_bed:
-                    p.location = "icu"
-                    p.grid_x = icu_bed.grid_x
-                    p.grid_y = icu_bed.grid_y
-                    self._events_this_tick.append(SimEvent(
-                        tick=self._tick,
-                        event_type="patient_escalated",
-                        entity_id=p.id,
-                        entity_type="patient",
-                        raw_description=(
-                            f"{p.name} escalated from general ward to ICU "
-                            f"(critical + worsening)"
-                        ),
-                        llm_explanation=None,
-                        severity="critical",
-                    ))
+    def _escalate_critical_to_icu(self) -> None:
+        """
+        Escalate critical patients sitting in general_ward to ICU when space opens up.
+        Called every tick after _resolve_pending_destinations.
+        Oldest critical patients are escalated first (FIFO within severity).
+        """
+        if self.hospital.is_ward_full("icu"):
+            return
+        critical_in_gw = sorted(
+            [pa for pa in self.patients.values()
+             if pa.patient.location == "general_ward"
+             and pa.patient.severity == "critical"
+             and pa.patient.pending_destination is None],
+            key=lambda pa: pa.patient.arrived_at_tick,
+        )
+        for pa in critical_in_gw:
+            if self.hospital.free_beds_in("icu") == 0:
+                break
+            # Free general bed first to avoid bed-map overwrite bug
+            self.hospital.free_bed(pa.patient.id)
+            bed = self.hospital.assign_bed(pa.patient.id, "icu")
+            if bed:
+                # Remove from current doctor's list
+                for da in self.doctors:
+                    if pa.patient.id in da.doctor.assigned_patient_ids:
+                        da.doctor.assigned_patient_ids.remove(pa.patient.id)
+                        da._update_workload()
+                        break
+                pa.patient.assigned_doctor_id = None
+                pa.patient.treatment_started_tick = None
+                pa.patient.location = "icu"
+                pa.patient.grid_x = bed.grid_x
+                pa.patient.grid_y = bed.grid_y
+                # Ensure visible to ICU doctor
+                existing_ids = {p.patient.id for p in self.queue.get_all()}
+                if pa.patient.id not in existing_ids:
+                    self.queue.push(pa)
+                self._events_this_tick.append(SimEvent(
+                    tick=self._tick,
+                    event_type="patient_escalated",
+                    entity_id=pa.patient.id,
+                    entity_type="patient",
+                    raw_description=f"{pa.patient.name} escalated from General Ward to ICU (critical, bed available)",
+                    llm_explanation=None,
+                    severity="critical",
+                ))
+
+    def _move_to_discharge(
+        self,
+        pa: PatientAgent,
+        stay_ticks: int,
+        discharge_severity: Optional[str] = None,
+        discharge_condition: Optional[str] = None,
+    ) -> None:
+        """Move a patient to the discharge zone. Applies LLM-assessed final condition."""
+        p = pa.patient
+        old_location = p.location
+
+        # Apply LLM-assessed final severity/condition at discharge
+        if discharge_severity in ("low", "medium", "critical"):
+            p.severity = discharge_severity
+        if discharge_condition in ("stable", "worsening", "improving"):
+            p.condition = discharge_condition
+
+        p.location = "discharged"
+        p.discharge_stay_ticks = stay_ticks
+        p.discharge_started_tick = self._tick
+
+        if old_location in ("general_ward", "icu"):
+            self.hospital.free_bed(p.id)
+        elif old_location == "waiting":
+            self.hospital.release_waiting_slot(p.id)
+
+        # Remove from treating doctor's patient list
+        for doctor_agent in self.doctors:
+            if p.id in doctor_agent.doctor.assigned_patient_ids:
+                doctor_agent.doctor.assigned_patient_ids.remove(p.id)
+                doctor_agent._update_workload()
+                break
+
+        self.metrics.record_discharge(pa, self._tick)
+        gx, gy = self.hospital.next_discharged_position()
+        p.grid_x = gx
+        p.grid_y = gy
+        self.queue.remove(p.id)
+
+        self._events_this_tick.append(SimEvent(
+            tick=self._tick,
+            event_type="patient_discharged",
+            entity_id=p.id,
+            entity_type="patient",
+            raw_description=f"{p.name} discharged (stay: {stay_ticks} ticks)",
+            llm_explanation=p.last_event_explanation,
+            severity="info",
+        ))
+        logger.debug(
+            "Tick %d: %s discharged from %s (stay %d ticks)",
+            self._tick, p.name, old_location, stay_ticks,
+        )
 
     def _discharge_patients(self) -> None:
         """
-        Find patients whose treatment is complete and condition != worsening.
-        Move to 'discharged', free their bed, update doctor list.
+        Phase A: Remove patients whose discharge stay has expired (clean up from sim).
+        Phase B: Auto-discharge patients whose treatment is complete.
         """
+        # Phase A: expire patients from discharge zone
+        for pa in list(self.patients.values()):
+            p = pa.patient
+            if p.location == "discharged" and p.discharge_started_tick is not None:
+                elapsed = self._tick - p.discharge_started_tick
+                if elapsed >= p.discharge_stay_ticks:
+                    del self.patients[p.id]
+
+        # Phase B: discharge patients whose treatment is complete
         for pa in list(self.patients.values()):
             p = pa.patient
             if p.location == "discharged":
@@ -548,46 +774,9 @@ class SimulationEngine:
             if elapsed < p.treatment_duration_ticks:
                 continue
             if p.condition == "worsening":
-                continue  # treatment will be extended by _progress_treatment()
+                continue  # treatment extended by patient reevaluation
 
-            # Discharge
-            old_location = p.location
-            p.location = "discharged"
-
-            # Free bed
-            self.hospital.free_bed(p.id)
-
-            # Remove from doctor's list
-            for doctor_agent in self.doctors:
-                if p.id in doctor_agent.doctor.assigned_patient_ids:
-                    doctor_agent.doctor.assigned_patient_ids.remove(p.id)
-                    doctor_agent._update_workload()
-                    break
-
-            # Record in metrics
-            self.metrics.record_discharge(pa, self._tick)
-
-            # Move to discharge zone grid position
-            gx, gy = self.hospital.next_discharged_position()
-            p.grid_x = gx
-            p.grid_y = gy
-
-            self._events_this_tick.append(SimEvent(
-                tick=self._tick,
-                event_type="patient_discharged",
-                entity_id=p.id,
-                entity_type="patient",
-                raw_description=(
-                    f"{p.name} discharged after {elapsed} ticks of treatment"
-                ),
-                llm_explanation=p.last_event_explanation,
-                severity="info",
-            ))
-
-            logger.debug(
-                "Tick %d: %s discharged from %s after %d ticks",
-                self._tick, p.name, old_location, elapsed,
-            )
+            self._move_to_discharge(pa, 2)
 
     def _build_state(self) -> SimulationState:
         """Serialise all agents + hospital + metrics into SimulationState."""
@@ -598,6 +787,7 @@ class SimulationEngine:
         return SimulationState(
             tick=self._tick,
             timestamp=time.time(),
+            sim_datetime=_sim_datetime(self._tick),
             patients=[pa.patient for pa in self.patients.values()],
             doctors=[da.doctor for da in self.doctors],
             beds=beds,
@@ -606,6 +796,10 @@ class SimulationEngine:
             events=list(self._events_this_tick),
             scenario=self._scenario,
             is_running=self._running,
+            arrival_rate=self._arrival_rate,
+            surge_ticks_remaining=self._surge_ticks_remaining,
+            shortage_ticks_remaining=self._shortage_ticks_remaining,
+            tick_speed_seconds=self.config.tick_interval_seconds,
         )
 
 

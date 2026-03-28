@@ -106,6 +106,26 @@ export const EntityDetailPanel: React.FC = () => {
                 Treating: {doctor.assigned_patient_ids.map(id => `#${id}`).join(', ')}
               </div>
             )}
+            {doctor.last_decision_reason && (
+              <div className="bg-violet-50 border border-violet-200 rounded-lg p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-semibold text-violet-700">🧠 Last Triage Decision</span>
+                  {doctor.last_decision_confidence != null && (
+                    <span className="text-xs font-mono text-violet-500">
+                      {(doctor.last_decision_confidence * 100).toFixed(0)}% confidence
+                    </span>
+                  )}
+                </div>
+                {doctor.last_decision_patient_id != null && (
+                  <div className="text-xs font-medium text-violet-600">
+                    → Patient #{doctor.last_decision_patient_id}
+                  </div>
+                )}
+                <div className="text-xs text-violet-900 leading-relaxed">
+                  {doctor.last_decision_reason}
+                </div>
+              </div>
+            )}
           </>
         )}
 
@@ -115,7 +135,7 @@ export const EntityDetailPanel: React.FC = () => {
           disabled={explanationLoading}
           className="w-full py-2 rounded-lg text-xs font-medium bg-indigo-600 text-white hover:bg-indigo-700 disabled:opacity-50 transition-colors"
         >
-          {explanationLoading ? '⏳ Loading AI explanation…' : '🤖 Explain (AI)'}
+          {explanationLoading ? '⏳ Loading…' : explanationText ? '🔄 Update AI Summary' : '🤖 Get AI Summary'}
         </button>
 
         {/* Explanation text */}

@@ -5,7 +5,7 @@ import { useUIStore } from '../../store/uiStore';
 import { WardZone } from './WardZone';
 import { PatientIcon } from './PatientIcon';
 import { DoctorIcon } from './DoctorIcon';
-import { useWebSocket } from '../../hooks/useWebSocket';
+
 
 const CELL_SIZE = 44;
 const GRID_W = 20;
@@ -62,7 +62,6 @@ const Legend: React.FC = () => (
 export const HospitalMap: React.FC = () => {
   const { patients, doctors } = useSimulationStore();
   const { selectEntity, selectedEntityId } = useUIStore();
-  const { requestExplanation } = useWebSocket();
 
   return (
     <div className="relative w-full overflow-auto bg-gray-50 rounded-xl border border-gray-200 shadow-inner">
@@ -83,16 +82,14 @@ export const HospitalMap: React.FC = () => {
 
         {/* Patients */}
         <AnimatePresence>
-          {patients.filter(p => p.location !== 'discharged').map(patient => (
+          {patients.map(patient => (
             <PatientIcon
               key={patient.id}
               patient={patient}
               cellSize={CELL_SIZE}
               isSelected={selectedEntityId === patient.id}
-              onClick={() => {
-                selectEntity(patient.id, 'patient');
-                requestExplanation('patient', patient.id);
-              }}
+              onClick={() => selectEntity(patient.id, 'patient')}
+              opacity={patient.location === 'discharged' ? 0.45 : 1}
             />
           ))}
         </AnimatePresence>
@@ -105,10 +102,7 @@ export const HospitalMap: React.FC = () => {
               doctor={doctor}
               cellSize={CELL_SIZE}
               isSelected={selectedEntityId === doctor.id}
-              onClick={() => {
-                selectEntity(doctor.id, 'doctor');
-                requestExplanation('doctor', doctor.id);
-              }}
+              onClick={() => selectEntity(doctor.id, 'doctor')}
             />
           ))}
         </AnimatePresence>

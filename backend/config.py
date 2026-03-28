@@ -31,8 +31,8 @@ def load_config() -> Config:
         tick_interval_seconds=float(os.getenv("TICK_INTERVAL_SECONDS", "1.0")),
         max_beds_general=int(os.getenv("MAX_BEDS_GENERAL", "20")),
         max_beds_icu=int(os.getenv("MAX_BEDS_ICU", "5")),
-        initial_doctors=int(os.getenv("INITIAL_DOCTORS", "4")),
-        arrival_rate_per_tick=float(os.getenv("ARRIVAL_RATE_PER_TICK", "1.5")),
+        initial_doctors=int(os.getenv("INITIAL_DOCTORS", "8")),
+        arrival_rate_per_tick=float(os.getenv("ARRIVAL_RATE_PER_TICK", "0.75")),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
     )
     logging.basicConfig(level=getattr(logging, cfg.log_level, logging.INFO))

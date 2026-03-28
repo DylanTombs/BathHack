@@ -33,12 +33,15 @@ from simulation.types import (
     PatientContext,
     PatientUpdate,
     SimEvent,
+    ArrivalContext,
+    PatientSpec,
 )
 from llm.prompts import (
     build_doctor_decision_prompt,
     build_event_explanation_prompt,
     build_explain_entity_prompt,
     build_patient_reeval_prompt,
+    build_patient_arrival_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,6 +73,7 @@ class OpenRouterLLMClient:
 
     MAX_TOKENS_DECISION = 256      # small structured JSON response
     MAX_TOKENS_EXPLANATION = 512   # paragraph of natural language
+    MAX_TOKENS_PATIENT_BATCH = 1024  # ~6 patients at ~150 tokens each
     TIMEOUT_SECONDS = 10.0         # OpenRouter may have higher latency than direct API
     MAX_RETRIES = 2                # retries only on RateLimitError
 
@@ -102,6 +106,7 @@ class OpenRouterLLMClient:
                 reason="No patients waiting for assignment",
                 confidence=1.0,
                 fallback_used=True,
+                action="treat",
             )
 
         prompt = build_doctor_decision_prompt(context)
@@ -180,6 +185,129 @@ class OpenRouterLLMClient:
             )
             self._fallback_count += 1
             return f"Unable to generate explanation for {entity_type} #{entity_id}."
+
+    async def generate_patient_batch(
+        self,
+        context: ArrivalContext,
+        fallback_fn: Callable[[], list[PatientSpec]],
+    ) -> list[PatientSpec]:
+        """
+        Ask the LLM to generate a batch of arriving patients for this tick.
+
+        LLM decides the count and generates coherent patient identities
+        (name, age, diagnosis, severity, backstory) informed by time-of-day
+        and hospital state. Falls back to fallback_fn() on any failure.
+        """
+        prompt = build_patient_arrival_prompt(context)
+        raw = await self._call_with_fallback(
+            prompt=prompt,
+            max_tokens=self.MAX_TOKENS_PATIENT_BATCH,
+            fallback_fn=lambda: None,
+        )
+        if raw is None:
+            return fallback_fn()
+        return self._parse_patient_batch(raw, fallback_fn, context)
+
+    def _parse_patient_batch(
+        self,
+        raw: str,
+        fallback_fn: Callable[[], list[PatientSpec]],
+        context: ArrivalContext,
+    ) -> list[PatientSpec]:
+        """
+        Parse LLM JSON array response into a list of PatientSpec.
+
+        Per-entry errors are skipped silently; a completely unparseable
+        response triggers fallback_fn().
+        """
+        try:
+            text = raw.strip()
+            fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
+            if fence:
+                text = fence.group(1).strip()
+            data = json.loads(text)
+            if not isinstance(data, list):
+                logger.warning("LLM patient batch: expected list, got %s", type(data))
+                return fallback_fn()
+        except json.JSONDecodeError as exc:
+            logger.warning("Patient batch JSON parse failed: %s | raw=%r", exc, raw[:300])
+            return fallback_fn()
+
+        specs: list[PatientSpec] = []
+        for i, item in enumerate(data):
+            try:
+                if not isinstance(item, dict):
+                    continue
+                sev = item.get("severity", "low")
+                if sev not in _VALID_SEVERITIES:
+                    sev = "low"
+                backstory = str(item.get("backstory", ""))[:300].strip() or None
+                specs.append(PatientSpec(
+                    name=str(item.get("name", f"Patient {i + 1}"))[:60].strip(),
+                    age=max(1, min(99, int(item.get("age", 40)))),
+                    severity=sev,  # type: ignore[arg-type]
+                    diagnosis=str(item.get("diagnosis", "Unknown"))[:120].strip(),
+                    backstory=backstory,
+                ))
+            except Exception as exc:
+                logger.debug("Skipping malformed patient spec at index %d: %s", i, exc)
+                continue
+
+        if len(specs) > 20:
+            logger.warning("LLM generated %d patients — capping at 20", len(specs))
+            specs = specs[:20]
+
+        specs = self._normalize_arrival_severity_mix(specs, context)
+
+        logger.debug("LLM generated %d patient(s)", len(specs))
+        return specs
+
+    def _normalize_arrival_severity_mix(
+        self,
+        specs: list[PatientSpec],
+        context: ArrivalContext,
+    ) -> list[PatientSpec]:
+        """
+        Apply a realism guard to LLM-generated severity mix.
+
+        - Normal operation: cap critical share at 10%
+        - Surge operation: cap critical share at 25%
+
+        Excess critical entries are downgraded to medium so the simulation
+        remains plausible while preserving patient count and identities.
+        """
+        if not specs:
+            return specs
+
+        max_critical_share = 0.25 if context.surge_active else 0.10
+        max_critical = int(len(specs) * max_critical_share)
+
+        # Guarantee at least one critical only for larger batches.
+        if context.surge_active and len(specs) >= 4:
+            max_critical = max(1, max_critical)
+        elif not context.surge_active and len(specs) >= 10:
+            max_critical = max(1, max_critical)
+
+        critical_indices = [
+            i for i, spec in enumerate(specs)
+            if spec.severity == "critical"
+        ]
+
+        overflow = len(critical_indices) - max_critical
+        if overflow <= 0:
+            return specs
+
+        # Downgrade overflow criticals at the tail to preserve earlier items.
+        for idx in reversed(critical_indices[-overflow:]):
+            specs[idx].severity = "medium"
+
+        logger.info(
+            "Normalized LLM arrival severity mix: critical %d -> %d (surge=%s)",
+            len(critical_indices),
+            max_critical,
+            context.surge_active,
+        )
+        return specs
 
     # ── Internal: API call layer ──────────────────────────────────────────────
 
@@ -277,11 +405,47 @@ class OpenRouterLLMClient:
                 )
                 return self._rule_based_doctor_fallback(context)
 
+            action = str(data.get("action", "treat"))
+            if action not in ("treat", "general_ward", "icu", "discharge"):
+                action = "treat"
+
+            treatment_ticks: Optional[int] = None
+            raw_tt = data.get("treatment_ticks")
+            if raw_tt is not None:
+                try:
+                    treatment_ticks = max(1, min(20, int(raw_tt)))
+                except (TypeError, ValueError):
+                    treatment_ticks = None
+
+            discharge_stay: Optional[int] = None
+            discharge_severity: Optional[str] = None
+            discharge_condition: Optional[str] = None
+            if action == "discharge":
+                raw_stay = data.get("discharge_stay_ticks")
+                if raw_stay is not None:
+                    try:
+                        discharge_stay = max(0, min(8, int(raw_stay)))
+                    except (TypeError, ValueError):
+                        discharge_stay = 0
+
+                raw_sev = data.get("discharge_severity")
+                if raw_sev in _VALID_SEVERITIES:
+                    discharge_severity = raw_sev
+
+                raw_cond = data.get("discharge_condition")
+                if raw_cond in _VALID_CONDITIONS:
+                    discharge_condition = raw_cond
+
             return DoctorDecision(
                 target_patient_id=pid,
                 reason=str(data.get("reason", "LLM triage decision")),
                 confidence=_safe_float(data.get("confidence", 0.8), 0.0, 1.0),
                 fallback_used=False,
+                action=action,
+                discharge_stay_ticks=discharge_stay,
+                discharge_severity=discharge_severity,
+                discharge_condition=discharge_condition,
+                treatment_ticks=treatment_ticks,
             )
         except Exception as exc:
             logger.warning(
@@ -353,6 +517,7 @@ class OpenRouterLLMClient:
         """
         Select patient by highest severity then longest wait time.
         Deterministic and always returns a valid patient from the list.
+        Routes correctly based on doctor ward and patient severity.
         """
         if not context.available_patients:
             return DoctorDecision(
@@ -360,6 +525,7 @@ class OpenRouterLLMClient:
                 reason="No patients available",
                 confidence=1.0,
                 fallback_used=True,
+                action="treat",
             )
 
         _severity_rank = {"critical": 2, "medium": 1, "low": 0}
@@ -367,6 +533,27 @@ class OpenRouterLLMClient:
             context.available_patients,
             key=lambda p: (_severity_rank.get(p.severity, 0), p.wait_time_ticks),
         )
+
+        # Determine correct action based on doctor's ward and patient severity
+        doctor_ward = getattr(context.doctor, "ward", "general_ward")
+        if doctor_ward == "waiting":
+            # Triage: critical → ICU (or general if ICU full), medium → general, low → treat
+            if best.severity == "critical":
+                action = "general_ward" if context.icu_is_full else "icu"
+            elif best.severity == "medium":
+                action = "general_ward"
+            else:
+                action = "treat"
+        elif doctor_ward == "general_ward":
+            # Ward doctor: escalate critical to ICU if space available
+            if best.severity == "critical" and not context.icu_is_full:
+                action = "icu"
+            else:
+                action = "treat"
+        else:
+            # ICU doctor: treat or step down improving patients
+            action = "treat"
+
         return DoctorDecision(
             target_patient_id=best.id,
             reason=(
@@ -375,6 +562,7 @@ class OpenRouterLLMClient:
             ),
             confidence=1.0,
             fallback_used=True,
+            action=action,
         )
 
     def _rule_based_patient_fallback(self, context: PatientContext) -> PatientUpdate:
