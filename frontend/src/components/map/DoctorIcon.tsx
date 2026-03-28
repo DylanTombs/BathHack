@@ -22,10 +22,11 @@ export const DoctorIcon: React.FC<Props> = ({ doctor, cellSize, isSelected, onCl
   const cy = (doctor.grid_y + 0.5) * cellSize;
   const color = WORKLOAD_COLOR[doctor.workload];
 
+  // Shift overlay 8px down and right
   return (
     <motion.g
       initial={{ opacity: 0, scale: 0.5 }}
-      animate={{ opacity: 1, scale: 1, x: cx - 12, y: cy - 14 }}
+      animate={{ opacity: 1, scale: 1, x: cx - 12 + 8, y: cy - 14 + 8 }}
       exit={{ opacity: 0, scale: 0 }}
       transition={{ type: 'spring', stiffness: 100, damping: 18 }}
       onClick={onClick}
