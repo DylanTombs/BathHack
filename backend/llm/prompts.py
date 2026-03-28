@@ -225,12 +225,11 @@ def build_patient_arrival_prompt(ctx: ArrivalContext) -> str:
     LLM decides the count and generates coherent patient identities
     informed by time-of-day, day-of-week, and hospital state.
     """
-    time_str = f"{ctx.hour_of_day:02d}:00"
     surge_note = " [MASS CASUALTY SURGE ACTIVE]" if ctx.surge_active else ""
     max_count = max(1, int(ctx.arrival_rate_hint * 2))
 
     return f"""You are generating new patient arrivals for a hospital A&E simulation.
-Simulated time: {ctx.day_name} {time_str}{surge_note}
+Simulated time: {ctx.sim_datetime}{surge_note}
 Hospital status: queue={ctx.current_queue_length} waiting, general ward={ctx.general_ward_occupancy_pct:.0f}% full, ICU={ctx.icu_occupancy_pct:.0f}% full
 Scenario: {ctx.scenario}. Expected arrival rate this tick: {ctx.arrival_rate_hint:.1f}
 

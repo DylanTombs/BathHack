@@ -197,9 +197,10 @@ class PatientContext:
 @dataclass
 class ArrivalContext:
     tick: int
-    hour_of_day: int            # tick % 24  (0 = midnight)
-    day_of_week: int            # (tick // 24) % 7  (0 = Monday)
+    hour_of_day: int            # 0–23
+    day_of_week: int            # 0=Monday … 6=Sunday
     day_name: str               # "Monday" … "Sunday"
+    sim_datetime: str           # e.g. "Monday 06:45" — full formatted sim time
     scenario: str               # "normal" | "surge" | "shortage"
     surge_active: bool
     current_queue_length: int

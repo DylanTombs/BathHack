@@ -457,6 +457,7 @@ class SimulationEngine:
                 hour_of_day=hour,
                 day_of_week=day,
                 day_name=day_name,
+                sim_datetime=_sim_datetime(self._tick),
                 scenario=self._scenario,
                 surge_active=self._surge_ticks_remaining > 0,
                 current_queue_length=metrics.current_queue_length,
