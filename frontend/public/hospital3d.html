@@ -512,6 +512,7 @@ window.addEventListener('message', ev => {
 
 // ── orbit ─────────────────────────────────────────────────────────────────────
 let down=false, ox=0, oy=0, theta=0.38, phi=0.65, r=90, bt=0.38, bp=0.65;
+let selId=null, selType=null;
 const dom = renderer.domElement;
 dom.addEventListener('mousedown', e => { down=true; ox=e.clientX; oy=e.clientY; bt=theta; bp=phi; });
 dom.addEventListener('mousemove', e => {
@@ -540,12 +541,23 @@ dom.addEventListener('click', e => {
     let o = h.object;
     while (o) {
       if (o.userData?.eid != null) {
-        window.parent.postMessage({ type: 'entity_click', entityType: o.userData.etype, entityId: o.userData.eid }, '*');
+        selId = o.userData.eid; selType = o.userData.etype;
+        const entMap = selType === 'patient' ? simPatients : simDoctors;
+        const entData = entMap.get(selId);
+        let nx = e.clientX / W, ny = e.clientY / H;
+        if (entData) {
+          const sp = new T.Vector3(entData.cx, 2.5, entData.cz).project(cam);
+          nx = (sp.x+1)/2; ny = (-sp.y+1)/2;
+        }
+        window.parent.postMessage({ type: 'entity_click', entityType: selType, entityId: selId, nx, ny }, '*');
         return;
       }
       o = o.parent;
     }
   }
+  // Clicked empty space — deselect
+  selId = null; selType = null;
+  window.parent.postMessage({ type: 'entity_deselect' }, '*');
 });
 
 (function loop() {
@@ -596,6 +608,15 @@ dom.addEventListener('click', e => {
     el.style.transform = 'translate(-50%,-50%) translate('+((v.x+1)/2*W)+'px,'+((-v.y+1)/2*H)+'px)';
     el.style.opacity = v.z < 1 ? '1' : '0';
   });
+  // Send selected entity's normalised screen position to parent every frame
+  if (selId !== null) {
+    const selMap = selType === 'patient' ? simPatients : simDoctors;
+    const sel = selMap.get(selId);
+    if (sel) {
+      const sp = new T.Vector3(sel.cx, 2.5, sel.cz).project(cam);
+      if (sp.z < 1) window.parent.postMessage({ type: 'entity_pos', nx: (sp.x+1)/2, ny: (-sp.y+1)/2 }, '*');
+    }
+  }
   renderer.render(scene, cam);
 })();
 </script>
