@@ -48,24 +48,32 @@ async def simulation_loop() -> None:
     """
     Background asyncio task.
 
-    Every config.tick_interval_seconds:
-    - If the engine is running, advance one tick.
-    - Broadcast the resulting SimulationState to all WebSocket clients.
+    Targets engine.config.tick_interval_seconds as the wall-clock period per tick.
+    The time spent inside engine.tick() (including LLM calls) is subtracted from
+    the sleep so the slider remains effective even when LLM latency is high.
 
     Errors inside a single tick are logged and retried after a 1-second cooldown
     so a transient LLM error or bad state doesn't kill the whole loop.
     """
-    logger.info("Simulation loop started (interval=%.1fs)", config.tick_interval_seconds)
+    import time as _time
+    logger.info("Simulation loop started (interval=%.1fs)", engine.config.tick_interval_seconds)
     while True:
         try:
+            interval = engine.config.tick_interval_seconds
             if engine.is_running:
+                t0 = _time.monotonic()
                 state = await engine.tick()
                 await ws_manager.broadcast_state(state)
-                logger.debug("Tick %d: %d patients, %d WS clients",
+                elapsed = _time.monotonic() - t0
+                logger.debug("Tick %d: %d patients, %d WS clients (%.2fs)",
                              state.tick,
                              len(state.patients),
-                             ws_manager.connection_count)
-            await asyncio.sleep(config.tick_interval_seconds)
+                             ws_manager.connection_count,
+                             elapsed)
+                sleep_time = max(0.0, interval - elapsed)
+            else:
+                sleep_time = interval
+            await asyncio.sleep(sleep_time)
         except asyncio.CancelledError:
             logger.info("Simulation loop cancelled — shutting down cleanly")
             break
