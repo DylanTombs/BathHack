@@ -31,6 +31,7 @@ interface TooltipData {
 export const PatientIcon: React.FC<Props> = ({ patient, cellSize, isSelected, onClick, opacity = 1 }) => {
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
   const r = isSelected ? 12 : 9;
+  const isDeceased = patient.location === 'deceased';
   // Pixel center of the patient's grid cell
   const cx = (patient.grid_x + 0.5) * cellSize;
   const cy = (patient.grid_y + 0.5) * cellSize;
@@ -52,37 +53,61 @@ export const PatientIcon: React.FC<Props> = ({ patient, cellSize, isSelected, on
       onMouseEnter={(e) => setTooltip({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setTooltip(null)}
     >
-      {/* Pulsing ring for critical patients — position relative to circle center */}
-      {patient.severity === 'critical' && (
-        <motion.circle
-          cx={r} cy={r}
-          r={14}
-          fill="none"
-          stroke="#ef4444"
-          strokeWidth={2}
-          animate={{ opacity: [1, 0, 1], r: [14, 18, 14] }}
-          transition={{ repeat: Infinity, duration: 1.5 }}
-        />
+      {isDeceased ? (
+        <>
+          {/* Skull icon for deceased patients */}
+          <circle
+            cx={r} cy={r}
+            r={r}
+            fill="#374151"
+            stroke={isSelected ? '#1d4ed8' : '#111827'}
+            strokeWidth={isSelected ? 3 : 2}
+            opacity={0.9}
+          />
+          <text
+            x={r} y={r + 4}
+            textAnchor="middle"
+            fontSize={11}
+            fill="white"
+          >
+            ☠
+          </text>
+        </>
+      ) : (
+        <>
+          {/* Pulsing ring for critical patients — position relative to circle center */}
+          {patient.severity === 'critical' && (
+            <motion.circle
+              cx={r} cy={r}
+              r={14}
+              fill="none"
+              stroke="#ef4444"
+              strokeWidth={2}
+              animate={{ opacity: [1, 0, 1], r: [14, 18, 14] }}
+              transition={{ repeat: Infinity, duration: 1.5 }}
+            />
+          )}
+          {/* Body circle */}
+          <circle
+            cx={r} cy={r}
+            r={r}
+            fill={SEVERITY_COLOR[patient.severity]}
+            stroke={isSelected ? '#1d4ed8' : CONDITION_STROKE[patient.condition]}
+            strokeWidth={isSelected ? 3 : 2}
+            opacity={0.9}
+          />
+          {/* P label */}
+          <text
+            x={r} y={r + 4}
+            textAnchor="middle"
+            fontSize={10}
+            fontWeight="bold"
+            fill="white"
+          >
+            P
+          </text>
+        </>
       )}
-      {/* Body circle */}
-      <circle
-        cx={r} cy={r}
-        r={r}
-        fill={SEVERITY_COLOR[patient.severity]}
-        stroke={isSelected ? '#1d4ed8' : CONDITION_STROKE[patient.condition]}
-        strokeWidth={isSelected ? 3 : 2}
-        opacity={0.9}
-      />
-      {/* P label */}
-      <text
-        x={r} y={r + 4}
-        textAnchor="middle"
-        fontSize={10}
-        fontWeight="bold"
-        fill="white"
-      >
-        P
-      </text>
       {/* Tooltip — portal renders above all SVG elements */}
       {tooltip && ReactDOM.createPortal(
         <div
@@ -103,7 +128,11 @@ export const PatientIcon: React.FC<Props> = ({ patient, cellSize, isSelected, on
           }}
         >
           <div style={{ fontWeight: 700 }}>{patient.name}</div>
-          <div>Sev: <span style={{ color: SEVERITY_COLOR[patient.severity] }}>{patient.severity}</span> · {patient.condition}</div>
+          {isDeceased ? (
+            <div>Status: <span style={{ color: '#ef4444' }}>Deceased</span></div>
+          ) : (
+            <div>Sev: <span style={{ color: SEVERITY_COLOR[patient.severity] }}>{patient.severity}</span> · {patient.condition}</div>
+          )}
           <div style={{ opacity: 0.75, fontSize: 10 }}>{patient.diagnosis}</div>
         </div>,
         document.body

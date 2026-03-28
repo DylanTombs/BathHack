@@ -200,9 +200,15 @@ ASSESSMENT GUIDELINES:
 - If treatment is going well (≥2 ticks, condition stable/improving): lean toward "improving"
 - Use null for new_severity if severity is genuinely unchanged
 - Be willing to escalate severity when something has plausibly gone wrong — this makes the simulation realistic
+- death_risk_pct: per-tick probability (0.0–1.0) that this patient dies WHILE being treated this tick.
+    - MUST be 0.0 for stable or improving patients, or low-severity conditions.
+    - For a critical patient who is worsening with a life-threatening diagnosis (e.g. cardiac arrest, massive haemorrhage, septic shock): use 0.02–0.05
+    - For a critical patient worsening with serious but not immediately fatal diagnosis: 0.01–0.02
+    - For a medium patient who is worsening: 0.002–0.005
+    - All other cases: 0.0
 
 Respond with valid JSON only — no commentary, no markdown fences:
-{{"condition": "<stable|worsening|improving>", "new_severity": "<low|medium|critical>|null", "priority_change": <true|false>, "reason": "<one concise clinical sentence>"}}"""
+{{"condition": "<stable|worsening|improving>", "new_severity": "<low|medium|critical>|null", "priority_change": <true|false>, "reason": "<one concise clinical sentence>", "death_risk_pct": <0.0–0.05>}}"""
 
 
 # ─── Event Explanation Prompt ─────────────────────────────────────────────────
@@ -329,7 +335,9 @@ Respond with a JSON array ONLY — no commentary, no markdown fences, no extra t
     "age": <integer 1–99>,
     "severity": "<low|medium|critical>",
     "diagnosis": "<specific clinical diagnosis, not just a symptom>",
-    "backstory": "<1–2 sentences: what happened and why they came to A&E today, grounded in the time/day>"
+    "backstory": "<1–2 sentences: what happened and why they came to A&E today, grounded in the time/day>",
+    "fatal_wait_ticks": <integer: realistic ticks before death if completely unattended — e.g. gunshot wound=3, STEMI=5, severe sepsis=8, appendicitis=15, minor laceration=null>
   }}
 ]
-An empty array [] is valid if zero patients arrive (e.g. quiet early morning)."""
+An empty array [] is valid if zero patients arrive (e.g. quiet early morning).
+Use null for fatal_wait_ticks if the condition is not life-threatening (e.g. sprained ankle, minor cut)."""

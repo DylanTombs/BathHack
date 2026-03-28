@@ -7,7 +7,7 @@ import time
 
 Severity = Literal["low", "medium", "critical"]
 PatientCondition = Literal["stable", "worsening", "improving"]
-PatientLocation = Literal["waiting", "general_ward", "icu", "discharged"]
+PatientLocation = Literal["waiting", "general_ward", "icu", "discharged", "deceased"]
 WorkloadLevel = Literal["light", "moderate", "heavy", "overwhelmed"]
 WardName = Literal["waiting", "general_ward", "icu", "discharged"]
 
@@ -38,6 +38,8 @@ class Patient:
     pending_destination: Optional[str] = None      # "general_ward"|"icu" — waiting for a bed
     discharge_stay_ticks: int = 2                  # how long to show in discharge zone
     discharge_started_tick: Optional[int] = None   # set when moved to discharged
+    fatal_wait_ticks: Optional[int] = None         # ticks unattended before death (LLM-set at arrival)
+    deceased_tick: Optional[int] = None            # tick on which patient died
 
 # ─── Doctor ───────────────────────────────────────────────────────────────────
 
@@ -101,6 +103,8 @@ class MetricsSnapshot:
     doctor_utilisation_pct: float           # % of doctors at capacity
     throughput_last_10_ticks: int           # discharges in last 10 ticks
     critical_patients_waiting: int
+    total_patients_deceased: int = 0
+    mortality_rate_pct: float = 0.0
 
 # ─── Events (LLM-generated explanations) ─────────────────────────────────────
 
@@ -113,6 +117,7 @@ class SimEvent:
         "patient_escalated",
         "patient_improved",
         "patient_discharged",
+        "patient_deceased",
         "doctor_decision",
         "surge_triggered",
         "staff_shortage",
@@ -192,6 +197,7 @@ class PatientUpdate:
     priority_change: bool
     reason: str                             # LLM-generated
     fallback_used: bool
+    death_risk_pct: float = 0.0             # per-tick chance of in-treatment death (0.0–1.0)
 
 @dataclass
 class DoctorContext:
@@ -232,3 +238,4 @@ class PatientSpec:
     severity: Severity
     diagnosis: str
     backstory: Optional[str]   # 1–2 sentence reason for attending A&E
+    fatal_wait_ticks: Optional[int] = None  # LLM-assessed ticks before death if unattended

@@ -2,7 +2,7 @@
 
 export type Severity = 'low' | 'medium' | 'critical';
 export type PatientCondition = 'stable' | 'worsening' | 'improving';
-export type PatientLocation = 'waiting' | 'general_ward' | 'icu' | 'discharged';
+export type PatientLocation = 'waiting' | 'general_ward' | 'icu' | 'discharged' | 'deceased';
 export type WorkloadLevel = 'light' | 'moderate' | 'heavy' | 'overwhelmed';
 export type WardName = 'waiting' | 'general_ward' | 'icu' | 'discharged';
 export type EventSeverity = 'info' | 'warning' | 'critical';
@@ -27,6 +27,8 @@ export interface Patient {
   pending_destination: string | null;
   discharge_stay_ticks: number;
   discharge_started_tick: number | null;
+  fatal_wait_ticks: number | null;
+  deceased_tick: number | null;
 }
 
 export interface Doctor {
@@ -75,6 +77,8 @@ export interface Metrics {
   doctor_utilisation_pct: number;
   throughput_last_10_ticks: number;
   critical_patients_waiting: number;
+  total_patients_deceased: number;
+  mortality_rate_pct: number;
 }
 
 export interface SimEvent {

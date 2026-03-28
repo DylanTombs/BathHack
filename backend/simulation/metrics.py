@@ -38,6 +38,9 @@ class MetricsCollector:
         # Discharge timestamps for throughput window: list of ticks where a discharge occurred
         self._discharge_ticks: list[int] = []
 
+        # Mortality counter
+        self._total_deceased: int = 0
+
     # ── Public API ────────────────────────────────────────────────────────────
 
     def record_arrival(self) -> None:
@@ -68,6 +71,16 @@ class MetricsCollector:
             self._wait_time_samples = self._wait_time_samples[-500:]
         if len(self._treatment_time_samples) > 500:
             self._treatment_time_samples = self._treatment_time_samples[-500:]
+
+    def record_death(
+        self,
+        patient: "PatientAgent",
+        tick: int,
+    ) -> None:
+        """Call when a patient dies."""
+        self._total_deceased += 1
+        p = patient.patient
+        self._wait_time_samples.append(float(p.wait_time_ticks))
 
     def record_tick(
         self,
@@ -130,6 +143,8 @@ class MetricsCollector:
             doctor_utilisation_pct=round(doctor_util_pct, 1),
             throughput_last_10_ticks=throughput,
             critical_patients_waiting=critical_waiting,
+            total_patients_deceased=self._total_deceased,
+            mortality_rate_pct=round(self.mortality_rate_pct, 1),
         )
 
         self._history.append(snapshot)
@@ -155,3 +170,13 @@ class MetricsCollector:
     @property
     def total_discharged(self) -> int:
         return self._total_discharged
+
+    @property
+    def total_deceased(self) -> int:
+        return self._total_deceased
+
+    @property
+    def mortality_rate_pct(self) -> float:
+        if self._total_arrived == 0:
+            return 0.0
+        return self._total_deceased / self._total_arrived * 100.0

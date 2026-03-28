@@ -109,6 +109,8 @@ class PatientAgent:
         self._llm_callback = llm_callback
         self._last_llm_tick: int = -999   # tick when LLM was last called for this patient
         self._condition_changed_this_tick: bool = False
+        self._last_death_risk_pct: float = 0.0
+        self._died_this_tick: bool = False
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -120,8 +122,9 @@ class PatientAgent:
         events: list[SimEvent] = []
         p = self.patient
         self._condition_changed_this_tick = False
+        self._died_this_tick = False
 
-        if p.location == "discharged":
+        if p.location in ("discharged", "deceased"):
             return events
 
         # ── Patients waiting without a doctor ─────────────────────────────────
@@ -143,6 +146,11 @@ class PatientAgent:
             if event:
                 events.append(event)
                 self._last_llm_tick = tick
+
+        # ── Death checks ──────────────────────────────────────────────────────
+        death_event = self._check_death(tick)
+        if death_event:
+            events.append(death_event)
 
         return events
 
@@ -287,6 +295,62 @@ class PatientAgent:
 
         return event
 
+    def _check_death(self, tick: int) -> Optional[SimEvent]:
+        """
+        Check whether this patient dies this tick.
+
+        Two death paths:
+          1. Unattended death: wait_time_ticks >= fatal_wait_ticks (LLM-set threshold)
+          2. In-treatment death: random chance per tick from _last_death_risk_pct (LLM-set)
+
+        Sets p.location = "deceased" and self._died_this_tick = True if death occurs.
+        """
+        p = self.patient
+        if p.location in ("discharged", "deceased"):
+            return None
+
+        died = False
+
+        # Unattended death
+        if (
+            p.assigned_doctor_id is None
+            and p.fatal_wait_ticks is not None
+            and p.wait_time_ticks >= p.fatal_wait_ticks
+        ):
+            died = True
+
+        # In-treatment death (only if not already dying from unattended)
+        elif (
+            p.assigned_doctor_id is not None
+            and self._last_death_risk_pct > 0.0
+            and random.random() < self._last_death_risk_pct
+        ):
+            died = True
+
+        if not died:
+            return None
+
+        p.location = "deceased"
+        p.deceased_tick = tick
+        self._died_this_tick = True
+
+        cause = (
+            f"unattended for {p.wait_time_ticks} ticks (threshold: {p.fatal_wait_ticks})"
+            if p.assigned_doctor_id is None
+            else "fatal complication during treatment"
+        )
+        logger.info("Tick %d: %s deceased — %s", tick, p.name, cause)
+
+        return SimEvent(
+            tick=tick,
+            event_type="patient_deceased",
+            entity_id=p.id,
+            entity_type="patient",
+            raw_description=f"{p.name} deceased — {cause}",
+            llm_explanation=None,
+            severity="critical",
+        )
+
     # ── LLM trigger logic ─────────────────────────────────────────────────────
 
     def _should_call_llm_for_reevaluation(self, tick: int) -> bool:
@@ -296,10 +360,10 @@ class PatientAgent:
           - OR condition just changed to worsening
           - OR patient has been waiting > CRITICAL_WAIT_THRESHOLD_TICKS
           - NOT if already called this tick
-          - NOT if patient is discharged
+          - NOT if patient is discharged or deceased
         """
         p = self.patient
-        if p.location == "discharged":
+        if p.location in ("discharged", "deceased"):
             return False
         if self._last_llm_tick == tick:
             return False
@@ -328,7 +392,7 @@ class PatientAgent:
             return None
 
         # Build context
-        ward = hospital.get_ward(p.location if p.location != "discharged" else "waiting")
+        ward = hospital.get_ward(p.location if p.location not in ("discharged", "deceased") else "waiting")
         context = PatientContext(
             patient=p,
             ticks_waiting=p.wait_time_ticks,
@@ -350,6 +414,9 @@ class PatientAgent:
             p.severity = update.new_severity
         if update.new_condition != old_condition:
             self._condition_changed_this_tick = True
+
+        # Cache death risk for use in _check_death this tick
+        self._last_death_risk_pct = update.death_risk_pct
 
         # Store last explanation on the Patient for UI
         if update.reason:
@@ -450,5 +517,6 @@ class PatientAgent:
             grid_y=grid_y,
             last_event_explanation=None,
             backstory=spec.backstory,
+            fatal_wait_ticks=spec.fatal_wait_ticks,
         )
         return cls(patient, llm_callback=llm_callback)

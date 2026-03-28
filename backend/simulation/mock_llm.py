@@ -60,8 +60,16 @@ class MockLLMInterface:
     async def patient_reevaluate(self, context: PatientContext) -> PatientUpdate:
         """
         Return current state unchanged — no mock condition adjustments.
+        Sets death_risk_pct based on severity/condition rule-based logic.
         """
         p = context.patient
+        if p.severity == "critical" and p.condition == "worsening":
+            death_risk_pct = 0.02
+        elif p.severity == "medium" and p.condition == "worsening":
+            death_risk_pct = 0.005
+        else:
+            death_risk_pct = 0.0
+
         return PatientUpdate(
             patient_id=p.id,
             new_condition=p.condition,
@@ -73,6 +81,7 @@ class MockLLMInterface:
                 f"waited={context.ticks_waiting} tick(s)."
             ),
             fallback_used=True,
+            death_risk_pct=death_risk_pct,
         )
 
     async def explain_event(self, event: SimEvent) -> str:
@@ -114,4 +123,8 @@ class MockLLMInterface:
         else:
             sev_pool = ["low", "low", "low", "medium", "medium", "critical"]
 
-        return [_make_random_spec(random.choice(sev_pool)) for _ in range(count)]
+        specs = [_make_random_spec(random.choice(sev_pool)) for _ in range(count)]
+        _FATAL_WAIT = {"critical": 4, "medium": 12, "low": None}
+        for spec in specs:
+            spec.fatal_wait_ticks = _FATAL_WAIT[spec.severity]
+        return specs

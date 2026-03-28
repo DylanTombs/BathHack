@@ -45,6 +45,18 @@ export const MetricsBanner: React.FC = () => {
         <MetricCard label="Arrived" value={metrics?.total_patients_arrived ?? 0} highlightColor="bg-blue-50" />
         <MetricCard label="Discharged" value={metrics?.total_patients_discharged ?? 0} highlightColor="bg-green-50" />
         <MetricCard
+          label="Deceased"
+          value={metrics?.total_patients_deceased ?? 0}
+          highlight={(metrics?.total_patients_deceased ?? 0) > 0}
+          highlightColor="bg-red-100"
+        />
+        <MetricCard
+          label="Mortality"
+          value={`${(metrics?.mortality_rate_pct ?? 0).toFixed(1)}%`}
+          highlight={(metrics?.mortality_rate_pct ?? 0) > 5}
+          highlightColor="bg-red-100"
+        />
+        <MetricCard
           label="Queue"
           value={metrics?.current_queue_length ?? 0}
           highlight={(metrics?.current_queue_length ?? 0) > 10}

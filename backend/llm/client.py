@@ -242,12 +242,21 @@ class OpenRouterLLMClient:
                 if sev not in _VALID_SEVERITIES:
                     sev = "low"
                 backstory = str(item.get("backstory", ""))[:300].strip() or None
+                raw_fwt = item.get("fatal_wait_ticks")
+                fatal_wait_ticks: Optional[int] = None
+                if raw_fwt is not None:
+                    try:
+                        fatal_wait_ticks = max(1, int(raw_fwt))
+                    except (TypeError, ValueError):
+                        fatal_wait_ticks = None
+
                 specs.append(PatientSpec(
                     name=str(item.get("name", f"Patient {i + 1}"))[:60].strip(),
                     age=max(1, min(99, int(item.get("age", 40)))),
                     severity=sev,  # type: ignore[arg-type]
                     diagnosis=str(item.get("diagnosis", "Unknown"))[:120].strip(),
                     backstory=backstory,
+                    fatal_wait_ticks=fatal_wait_ticks,
                 ))
             except Exception as exc:
                 logger.debug("Skipping malformed patient spec at index %d: %s", i, exc)
@@ -496,6 +505,8 @@ class OpenRouterLLMClient:
                 )
                 new_severity = None
 
+            death_risk_pct = _safe_float(data.get("death_risk_pct", 0.0), 0.0, 1.0)
+
             return PatientUpdate(
                 patient_id=context.patient.id,
                 new_condition=condition,
@@ -503,6 +514,7 @@ class OpenRouterLLMClient:
                 priority_change=bool(data.get("priority_change", False)),
                 reason=str(data.get("reason", "LLM reevaluation")),
                 fallback_used=False,
+                death_risk_pct=death_risk_pct,
             )
         except Exception as exc:
             logger.warning(
