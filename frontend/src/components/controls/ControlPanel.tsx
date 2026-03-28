@@ -60,7 +60,7 @@ export const ControlPanel: React.FC = () => {
                 : 'bg-green-100 text-green-700 hover:bg-green-200'
             }`}
           >
-            {pending ? '...' : isRunning ? '⏸ Pause' : '▶ Start'}
+            {pending ? '...' : isRunning ? 'Pause' : 'Start'}
           </button>
           <button
             onClick={handleReset}
@@ -80,26 +80,26 @@ export const ControlPanel: React.FC = () => {
             onClick={triggerSurge}
             className="py-2 px-2 rounded-lg text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
           >
-            {surgeTicks > 0 ? `${surgeTicks * 15} min` : '🚨 Surge'}
+            {surgeTicks > 0 ? `${surgeTicks * 15} min` : 'Surge'}
           </button>
           <button
             onClick={triggerShortage}
             className="py-2 px-2 rounded-lg text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
           >
-            {shortageTicks > 0 ? `${shortageTicks * 15} min` : '👨‍⚕️ Shortage'}
+            {shortageTicks > 0 ? `${shortageTicks * 15} min` : 'Shortage'}
           </button>
           <button
             onClick={triggerRecovery}
             className="py-2 px-2 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
           >
-            ✅ Normal
+            Normal
           </button>
         </div>
         {scenario !== 'normal' && (
           <div className={`mt-2 text-xs text-center font-medium py-1 rounded ${
             scenario === 'surge' ? 'text-red-600 bg-red-50' : 'text-orange-600 bg-orange-50'
           }`}>
-            {scenario === 'surge' ? '🚨 Mass Casualty Event Active' : '⚠️ Staff Shortage Active'}
+            {scenario === 'surge' ? 'Mass Casualty Event Active' : 'Staff Shortage Active'}
           </div>
         )}
       </div>
