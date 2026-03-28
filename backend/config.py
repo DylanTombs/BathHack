@@ -26,7 +26,7 @@ class Config:
 
 def load_config() -> Config:
     cfg = Config(
-        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY", ""),
         llm_model=os.getenv("LLM_MODEL", "gpt-4o-mini"),
         tick_interval_seconds=float(os.getenv("TICK_INTERVAL_SECONDS", "0.1")),
         max_beds_general=int(os.getenv("MAX_BEDS_GENERAL", "20")),

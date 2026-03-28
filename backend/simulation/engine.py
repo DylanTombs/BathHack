@@ -567,7 +567,7 @@ class SimulationEngine:
         events: list[SimEvent] = []
         active = [
             pa for pa in self.patients.values()
-            if pa.patient.location != "discharged"
+            if pa.patient.location not in ("discharged", "deceased")
         ]
         tasks = [pa.tick(self._tick, self.hospital) for pa in active]
         results = await asyncio.gather(*tasks)
@@ -611,12 +611,14 @@ class SimulationEngine:
                     pa for pa in self.queue.get_all()
                     if pa.patient.location == "waiting"
                     and pa.patient.pending_destination is None
+                    and pa.patient.location != "deceased"
                 ]
             else:
                 # General/ICU: unassigned patients already in this ward
                 candidates = [
                     pa for pa in self.queue.get_all()
                     if pa.patient.location == doctor_ward
+                    and pa.patient.location != "deceased"
                 ]
 
             if not candidates:
