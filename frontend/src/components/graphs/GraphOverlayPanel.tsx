@@ -219,10 +219,10 @@ export const GraphOverlayPanel: React.FC = () => {
     <div
       className="fixed z-40 bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col"
       style={{
-        top: '72px',
+        top: '140px',
+        bottom: '24px',
         right: '24px',
         width: '400px',
-        height: 'calc(100vh - 96px)',
       }}
     >
       {/* Tab bar */}
@@ -279,7 +279,7 @@ export const GraphOverlayPanel: React.FC = () => {
 
       {/* Event Log tab */}
       {rightPanelTab === 'events' && (
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto scrollbar-hidden p-2 space-y-1">
           {events.length === 0 ? (
             <p className="text-xs text-gray-400 text-center pt-8">Waiting for events…</p>
           ) : (

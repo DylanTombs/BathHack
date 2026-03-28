@@ -35,18 +35,28 @@ export const Layout: React.FC = () => {
       {/* Metrics banner */}
       <MetricsBanner />
 
-      {/* Main layout: left controls | map */}
-      <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-          <div className="w-80 shrink-0 p-4 space-y-3 overflow-y-auto border-r border-gray-200 bg-white flex flex-col" style={{height: '100%'}}>
-            <ControlPanel />
-            <div className="flex-1 flex flex-col justify-end">
-              <AISummary />
-            </div>
+      {/* Main layout: map fills space, fixed panels float over */}
+      <div className="flex-1 overflow-auto p-4" style={{ minHeight: 0 }}>
+        <HospitalMap />
+      </div>
+
+      {/* Left panel — fixed bubble (mirrors right panel style) */}
+      <div
+        className="fixed z-40 bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col"
+        style={{
+          top: '140px',
+          bottom: '24px',
+          left: '24px',
+          width: '400px',
+        }}
+      >
+        <div className="p-4 space-y-3 overflow-y-auto scrollbar-hidden flex flex-col h-full">
+          <ControlPanel />
+          <div className="flex-1 flex flex-col justify-end">
+            <AISummary />
           </div>
-        <div className="flex-1 overflow-auto p-4">
-          <HospitalMap />
         </div>
-    	  </div>
+      </div>
 
       {/* Entity detail — fixed overlay, left of the graph panel */}
       {isPanelOpen && (
