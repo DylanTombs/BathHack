@@ -2,6 +2,7 @@ import { create } from 'zustand';
 import { persist } from 'zustand/middleware';
 
 export type GraphPreset = 'overview' | 'surge' | 'capacity';
+export type RightPanelTab = 'metrics' | 'events';
 
 interface UIStore {
   selectedEntityId: number | null;
@@ -11,8 +12,8 @@ interface UIStore {
   isPanelOpen: boolean;
   isSurgeActive: boolean;
 
-  // Graph overlay state
-  graphsOpen: boolean;
+  // Right panel state
+  rightPanelTab: RightPanelTab;
   activePreset: GraphPreset;
 
   selectEntity: (id: number, type: 'patient' | 'doctor') => void;
@@ -20,11 +21,7 @@ interface UIStore {
   setExplanation: (text: string | null) => void;
   setExplanationLoading: (v: boolean) => void;
   setSurgeActive: (v: boolean) => void;
-
-  // Graph overlay actions
-  openGraph: () => void;
-  closeGraph: () => void;
-  toggleGraphs: () => void;
+  setRightPanelTab: (tab: RightPanelTab) => void;
   setPreset: (preset: GraphPreset) => void;
 }
 
@@ -38,7 +35,7 @@ export const useUIStore = create<UIStore>()(
       isPanelOpen: false,
       isSurgeActive: false,
 
-      graphsOpen: false,
+      rightPanelTab: 'metrics',
       activePreset: 'overview',
 
       selectEntity: (id, type) => set({
@@ -56,16 +53,13 @@ export const useUIStore = create<UIStore>()(
       setExplanation: (text) => set({ explanationText: text, explanationLoading: false }),
       setExplanationLoading: (v) => set({ explanationLoading: v }),
       setSurgeActive: (v) => set({ isSurgeActive: v }),
-
-      openGraph: () => set({ graphsOpen: true }),
-      closeGraph: () => set({ graphsOpen: false }),
-      toggleGraphs: () => set((s) => ({ graphsOpen: !s.graphsOpen })),
+      setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
       setPreset: (preset) => set({ activePreset: preset }),
     }),
     {
       name: 'hospital-sim-ui',
       partialize: (state) => ({
-        graphsOpen: state.graphsOpen,
+        rightPanelTab: state.rightPanelTab,
         activePreset: state.activePreset,
       }),
     }
