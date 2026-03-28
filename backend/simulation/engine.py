@@ -501,15 +501,30 @@ class SimulationEngine:
     async def _update_patients(self) -> list[SimEvent]:
         """Call tick() on every living patient and collect events."""
         events: list[SimEvent] = []
-        tasks = [
-            pa.tick(self._tick, self.hospital)
-            for pa in self.patients.values()
-            if pa.patient.location != "discharged"
+        active = [
+            pa for pa in self.patients.values()
+            if pa.patient.location not in ("discharged", "deceased")
         ]
+        tasks = [pa.tick(self._tick, self.hospital) for pa in active]
         results = await asyncio.gather(*tasks)
-        for result in results:
+        for pa, result in zip(active, results):
             events.extend(result)
+            if pa._died_this_tick:
+                self._move_to_deceased(pa)
         return events
+
+    def _move_to_deceased(self, pa: PatientAgent) -> None:
+        """Free all resources for a patient who has just died."""
+        p = pa.patient
+        self.hospital.free_bed(p.id)
+        self.hospital.release_waiting_slot(p.id)
+        for doctor_agent in self.doctors:
+            if p.id in doctor_agent.doctor.assigned_patient_ids:
+                doctor_agent.doctor.assigned_patient_ids.remove(p.id)
+                doctor_agent._update_workload()
+                break
+        self.queue.remove(p.id)
+        self.metrics.record_death(pa, self._tick)
 
     async def _run_doctor_assignments(self) -> list[SimEvent]:
         """
@@ -661,7 +676,8 @@ class SimulationEngine:
             [pa for pa in self.patients.values()
              if pa.patient.location == "general_ward"
              and pa.patient.severity == "critical"
-             and pa.patient.pending_destination is None],
+             and pa.patient.pending_destination is None
+             and pa.patient.deceased_tick is None],
             key=lambda pa: pa.patient.arrived_at_tick,
         )
         for pa in critical_in_gw:
@@ -754,18 +770,22 @@ class SimulationEngine:
         Phase A: Remove patients whose discharge stay has expired (clean up from sim).
         Phase B: Auto-discharge patients whose treatment is complete.
         """
-        # Phase A: expire patients from discharge zone
+        # Phase A: expire patients from discharge zone OR deceased zone
         for pa in list(self.patients.values()):
             p = pa.patient
             if p.location == "discharged" and p.discharge_started_tick is not None:
                 elapsed = self._tick - p.discharge_started_tick
                 if elapsed >= p.discharge_stay_ticks:
                     del self.patients[p.id]
+            elif p.location == "deceased" and p.deceased_tick is not None:
+                # Show skull for exactly 1 tick then remove
+                if self._tick - p.deceased_tick >= 1:
+                    del self.patients[p.id]
 
         # Phase B: discharge patients whose treatment is complete
         for pa in list(self.patients.values()):
             p = pa.patient
-            if p.location == "discharged":
+            if p.location in ("discharged", "deceased"):
                 continue
             if p.treatment_started_tick is None or p.assigned_doctor_id is None:
                 continue

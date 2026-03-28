@@ -47,6 +47,8 @@ def serialize_metrics(m) -> dict:
         "doctor_utilisation_pct": round(m.doctor_utilisation_pct, 2),
         "throughput_last_10_ticks": m.throughput_last_10_ticks,
         "critical_patients_waiting": m.critical_patients_waiting,
+        "total_patients_deceased": m.total_patients_deceased,
+        "mortality_rate_pct": round(m.mortality_rate_pct, 1),
     }
 
 
