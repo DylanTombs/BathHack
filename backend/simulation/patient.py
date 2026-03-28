@@ -221,8 +221,7 @@ class PatientAgent:
                 entity_id=p.id,
                 entity_type="patient",
                 raw_description=(
-                    f"{p.name} not responding to treatment; "
-                    f"condition worsening, treatment extended by {extension} ticks"
+                    f"{p.name} not responding to treatment — {p.diagnosis} worsening"
                 ),
                 llm_explanation=None,
                 severity="warning",
@@ -253,8 +252,7 @@ class PatientAgent:
                     entity_id=p.id,
                     entity_type="patient",
                     raw_description=(
-                        f"{p.name} (low) deteriorated to medium severity "
-                        f"after waiting {p.wait_time_ticks} ticks"
+                        f"{p.name} deteriorated to medium severity — {p.diagnosis} worsening"
                     ),
                     llm_explanation=None,
                     severity="warning",
@@ -270,8 +268,7 @@ class PatientAgent:
                     entity_id=p.id,
                     entity_type="patient",
                     raw_description=(
-                        f"{p.name} (medium) deteriorated to critical "
-                        f"after waiting {p.wait_time_ticks} ticks"
+                        f"{p.name} deteriorated to critical — {p.diagnosis} worsening"
                     ),
                     llm_explanation=None,
                     severity="critical",
@@ -287,8 +284,7 @@ class PatientAgent:
                     entity_id=p.id,
                     entity_type="patient",
                     raw_description=(
-                        f"{p.name} (critical) in danger — no doctor available "
-                        f"after {p.wait_time_ticks} ticks"
+                        f"{p.name} critical and untreated — {p.diagnosis} deteriorating"
                     ),
                     llm_explanation=None,
                     severity="critical",
