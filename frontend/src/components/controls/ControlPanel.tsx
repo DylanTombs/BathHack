@@ -1,13 +1,18 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSimulationStore } from '../../store/simulationStore';
 
 const SPECIALTIES = ['General', 'ICU', 'Triage'];
 
 export const ControlPanel: React.FC = () => {
-  const { isRunning, scenario, connected, doctors } = useSimulationStore();
+  const { isRunning, scenario, connected, doctors, arrivalRate: storeArrivalRate, surgeTicks, shortageTicks } = useSimulationStore();
   const { startSim, pauseSim, resetSim, triggerSurge, triggerShortage, triggerRecovery, updateConfig, addDoctor, removeDoctor } = useWebSocket();
   const [arrivalRate, setArrivalRate] = useState(1.5);
+
+  // Sync slider whenever backend resets arrival rate (e.g. Normal button)
+  useEffect(() => {
+    setArrivalRate(storeArrivalRate);
+  }, [storeArrivalRate]);
   const [selectedSpecialty, setSelectedSpecialty] = useState('General');
   const [pending, setPending] = useState(false);
 
@@ -64,13 +69,13 @@ export const ControlPanel: React.FC = () => {
             onClick={triggerSurge}
             className="py-2 px-2 rounded-lg text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
           >
-            🚨 Surge
+            {surgeTicks > 0 ? `${surgeTicks * 15} min` : '🚨 Surge'}
           </button>
           <button
             onClick={triggerShortage}
             className="py-2 px-2 rounded-lg text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
           >
-            👨‍⚕️ Shortage
+            {shortageTicks > 0 ? `${shortageTicks * 15} min` : '👨‍⚕️ Shortage'}
           </button>
           <button
             onClick={triggerRecovery}

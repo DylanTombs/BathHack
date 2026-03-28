@@ -54,9 +54,12 @@ PATIENT_REEVAL_EVERY_N_TICKS = 5
 DOCTOR_LLM_COOLDOWN_TICKS = 3
 CRITICAL_WAIT_THRESHOLD_TICKS = 4
 MAX_WAIT_BEFORE_DEATH_TICKS = 15
-SURGE_DURATION_TICKS = 10
-SHORTAGE_DURATION_TICKS = 8
+SURGE_DURATION_TICKS = 4
+SHORTAGE_DURATION_TICKS = 4
 METRICS_HISTORY_BUFFER = 100
+
+# Severity rank for priority resolution
+_SEVERITY_RANK = {"critical": 2, "medium": 1, "low": 0}
 
 # Severity distribution during a surge (overrides normal 60/30/10)
 _SURGE_SEVERITY_WEIGHTS = [("low", 0.20), ("medium", 0.30), ("critical", 0.50)]
@@ -121,7 +124,7 @@ class SimulationEngine:
 
         # Shortage state
         self._shortage_ticks_remaining: int = 0
-        self._incapacitated_doctor_ids: list[int] = []
+        self._benched_doctors: list[DoctorAgent] = []  # physically removed during shortage
 
         # Effective arrival rate (can be modified by apply_config or surge)
         self._arrival_rate: float = config.arrival_rate_per_tick
@@ -197,8 +200,8 @@ class SimulationEngine:
         assignment_events = await self._run_doctor_assignments()
         self._events_this_tick.extend(assignment_events)
 
-        # ── Step 4: Bed assignment (new arrivals + ICU escalations) ───────
-        self._assign_beds()
+        # ── Step 4: Resolve pending destinations + auto-route ─────────────
+        self._resolve_pending_destinations()
 
         # ── Step 5: Discharge completed patients ──────────────────────────
         self._discharge_patients()
@@ -304,26 +307,27 @@ class SimulationEngine:
 
     def trigger_shortage(self) -> None:
         """
-        Staff shortage: reduce to exactly 1 doctor per specialty.
-        All others are incapacitated for SHORTAGE_DURATION_TICKS ticks.
+        Staff shortage: physically remove all but 1 doctor per specialty.
+        Benched doctors are restored on trigger_recovery() or when the timer expires.
         """
         from collections import defaultdict
-        by_specialty: dict[str, list[int]] = defaultdict(list)
+        by_specialty: dict[str, list] = defaultdict(list)
         for d in self.doctors:
-            by_specialty[d.doctor.specialty].append(d.doctor.id)
+            by_specialty[d.doctor.specialty].append(d)
 
-        incapacitate = []
-        for ids in by_specialty.values():
-            incapacitate.extend(ids[1:])  # keep first of each specialty, bench the rest
+        active = []
+        benched = []
+        for doctors_in_spec in by_specialty.values():
+            active.append(doctors_in_spec[0])   # keep first of each specialty
+            benched.extend(doctors_in_spec[1:]) # bench the rest
 
-        self._incapacitated_doctor_ids = incapacitate
+        self._benched_doctors = benched
+        self.doctors = active
         self._shortage_ticks_remaining = SHORTAGE_DURATION_TICKS
         self._scenario = "shortage"
-        n_incapacitate = len(incapacitate)
-        n_total = len(self.doctors)
         logger.info(
-            "Shortage triggered at tick %d; %d/%d doctors incapacitated (1 per specialty kept)",
-            self._tick, n_incapacitate, n_total,
+            "Shortage triggered at tick %d; %d active, %d benched (1 per specialty kept)",
+            self._tick, len(active), len(benched),
         )
         self._events_this_tick.append(SimEvent(
             tick=self._tick,
@@ -332,18 +336,21 @@ class SimulationEngine:
             entity_type="doctor",
             raw_description=(
                 f"Staff shortage: reduced to 1 doctor per specialty "
-                f"({n_total - n_incapacitate} active, {n_incapacitate} stood down)"
+                f"({len(active)} active, {len(benched)} stood down)"
             ),
             llm_explanation=None,
             severity="critical",
         ))
 
     def trigger_recovery(self) -> None:
-        """Reset scenario to normal."""
+        """Reset scenario to normal — restores benched doctors and default arrival rate."""
         self._surge_ticks_remaining = 0
         self._surge_arrival_multiplier = 1.0
         self._shortage_ticks_remaining = 0
-        self._incapacitated_doctor_ids = []
+        self._arrival_rate = self.config.arrival_rate_per_tick
+        if self._benched_doctors:
+            self.doctors.extend(self._benched_doctors)
+            self._benched_doctors = []
         self._scenario = "normal"
         logger.info("Recovery triggered at tick %d", self._tick)
 
@@ -392,7 +399,7 @@ class SimulationEngine:
         self._surge_ticks_remaining = 0
         self._surge_arrival_multiplier = 1.0
         self._shortage_ticks_remaining = 0
-        self._incapacitated_doctor_ids = []
+        self._benched_doctors = []
         self._arrival_rate = self.config.arrival_rate_per_tick
         self._init_doctors()
 
@@ -422,7 +429,9 @@ class SimulationEngine:
         if self._shortage_ticks_remaining > 0:
             self._shortage_ticks_remaining -= 1
             if self._shortage_ticks_remaining == 0:
-                self._incapacitated_doctor_ids = []
+                if self._benched_doctors:
+                    self.doctors.extend(self._benched_doctors)
+                    self._benched_doctors = []
                 if self._scenario == "shortage":
                     self._scenario = "normal"
 
@@ -501,116 +510,173 @@ class SimulationEngine:
 
     async def _run_doctor_assignments(self) -> list[SimEvent]:
         """
-        For each available doctor (not incapacitated):
-          - Get all unassigned patients from queue
-          - Call doctor.tick() which assigns patients up to capacity
-          - Remove assigned patients from queue
+        Ward-scoped doctor assignment:
+          - Triage doctors (ward="waiting") see only waiting patients with no pending destination
+          - Ward doctors see only unassigned patients in their ward
+          - Routing actions are handled immediately after each doctor's turn
         """
         events: list[SimEvent] = []
 
         for doctor_agent in self.doctors:
-            # Skip incapacitated doctors during shortage
-            if doctor_agent.doctor.id in self._incapacitated_doctor_ids:
-                continue
             if not doctor_agent.doctor.is_available:
                 continue
 
-            # Candidates = all unassigned patients in the queue
-            candidates = self.queue.get_all()
+            doctor_ward = doctor_agent.doctor.ward
+            if doctor_ward == "waiting":
+                # Triage: only patients in waiting zone who haven't been routed yet
+                candidates = [
+                    pa for pa in self.queue.get_all()
+                    if pa.patient.location == "waiting"
+                    and pa.patient.pending_destination is None
+                ]
+            else:
+                # General/ICU: unassigned patients already in this ward
+                candidates = [
+                    pa for pa in self.queue.get_all()
+                    if pa.patient.location == doctor_ward
+                ]
+
             if not candidates:
-                break
+                continue
 
             doctor_events = await doctor_agent.tick(
                 self._tick, candidates, self.hospital
             )
             events.extend(doctor_events)
 
-            # Remove newly-assigned patients from queue
-            for ev in doctor_events:
-                if ev.event_type == "doctor_decision":
-                    # Find the patient who was just assigned to this doctor
-                    # by looking at what changed in the doctor's list
-                    # The last assigned patient is the one in doctor_events
-                    pass
-
-            # Clean way: after tick, remove any patient whose assigned_doctor_id is now set
+            # Remove treated patients (assigned_doctor_id set) from queue
             for pa in list(self.queue.get_all()):
                 if pa.patient.assigned_doctor_id is not None:
                     self.queue.remove(pa.patient.id)
 
+            # Process routing actions immediately so other doctors don't re-route
+            for pa in list(self.patients.values()):
+                action = getattr(pa, "_pending_route_action", None)
+                if action is None:
+                    continue
+                stay = getattr(pa, "_pending_discharge_stay", None)
+                dis_sev = getattr(pa, "_pending_discharge_severity", None)
+                dis_cond = getattr(pa, "_pending_discharge_condition", None)
+                treatment_ticks = getattr(pa, "_pending_treatment_ticks", None)
+                for attr in ("_pending_route_action", "_pending_discharge_stay",
+                             "_pending_discharge_severity", "_pending_discharge_condition",
+                             "_pending_treatment_ticks"):
+                    if hasattr(pa, attr):
+                        delattr(pa, attr)
+                self.queue.remove(pa.patient.id)
+                if action == "discharge":
+                    self._move_to_discharge(pa, stay or 2, dis_sev, dis_cond)
+                else:
+                    # Apply triage's treatment estimate before routing
+                    if treatment_ticks is not None:
+                        pa.patient.treatment_duration_ticks = treatment_ticks
+                    pa.patient.pending_destination = action
+
         return events
 
-    def _assign_beds(self) -> None:
+    def _resolve_pending_destinations(self) -> None:
         """
-        For each patient without a bed:
-          - critical → try ICU first, then general ward
-          - medium/low → general ward only
-        Also handle ICU escalation for worsening critical patients in general_ward.
-        Sets patient.location and grid_x/y based on assigned bed.
+        Assign beds to patients routed by Triage doctors (pending_destination set).
+        Sorted by severity so critical patients get beds first.
+        Patients with no pending_destination stay in waiting until a Triage doctor sees them.
         """
-        # Phase A: assign beds to patients who just arrived (location="waiting", no bed)
-        for pa in list(self.patients.values()):
+        pending = sorted(
+            [pa for pa in self.patients.values() if pa.patient.pending_destination],
+            key=lambda pa: -_SEVERITY_RANK[pa.patient.severity],
+        )
+
+        for pa in pending:
             p = pa.patient
-            if p.location != "waiting":
-                continue
-            if self.hospital.get_bed_for_patient(p.id) is not None:
-                continue  # already has a bed
-
-            if p.severity == "critical":
-                # Try ICU first
-                bed = self.hospital.assign_bed(p.id, "icu")
-                if bed:
-                    p.location = "icu"
-                    p.grid_x = bed.grid_x
-                    p.grid_y = bed.grid_y
-                    # Release waiting slot
-                    self.hospital.release_waiting_slot(p.id)
-                    continue
-                # Fall through to general ward
-
-            # Medium / low (or critical when ICU full) → general ward
-            bed = self.hospital.assign_bed(p.id, "general_ward")
+            dest = p.pending_destination
+            bed = self.hospital.assign_bed(p.id, dest)
             if bed:
-                p.location = "general_ward"
+                # Free the old slot before moving
+                if p.location in ("general_ward", "icu"):
+                    self.hospital.free_bed(p.id)
+                    # Clear old doctor assignment so ward doctor can pick them up fresh
+                    for da in self.doctors:
+                        if p.id in da.doctor.assigned_patient_ids:
+                            da.doctor.assigned_patient_ids.remove(p.id)
+                            da._update_workload()
+                            break
+                    p.assigned_doctor_id = None
+                    p.treatment_started_tick = None
+                elif p.location == "waiting":
+                    self.hospital.release_waiting_slot(p.id)
+                p.location = dest
                 p.grid_x = bed.grid_x
                 p.grid_y = bed.grid_y
-                self.hospital.release_waiting_slot(p.id)
+                p.pending_destination = None
+                # Re-add to queue so ward doctors can treat them next tick
+                self.queue.push(pa)
 
-        # Phase B: ICU escalation — worsening critical patients currently in general_ward
-        for pa in list(self.patients.values()):
-            p = pa.patient
-            if (
-                p.location == "general_ward"
-                and p.severity == "critical"
-                and p.condition == "worsening"
-                and not self.hospital.is_ward_full("icu")
-            ):
-                # Free general ward bed
-                self.hospital.free_bed(p.id)
-                # Assign ICU bed
-                icu_bed = self.hospital.assign_bed(p.id, "icu")
-                if icu_bed:
-                    p.location = "icu"
-                    p.grid_x = icu_bed.grid_x
-                    p.grid_y = icu_bed.grid_y
-                    self._events_this_tick.append(SimEvent(
-                        tick=self._tick,
-                        event_type="patient_escalated",
-                        entity_id=p.id,
-                        entity_type="patient",
-                        raw_description=(
-                            f"{p.name} escalated from general ward to ICU "
-                            f"(critical + worsening)"
-                        ),
-                        llm_explanation=None,
-                        severity="critical",
-                    ))
+    def _move_to_discharge(
+        self,
+        pa: PatientAgent,
+        stay_ticks: int,
+        discharge_severity: Optional[str] = None,
+        discharge_condition: Optional[str] = None,
+    ) -> None:
+        """Move a patient to the discharge zone. Applies LLM-assessed final condition."""
+        p = pa.patient
+        old_location = p.location
+
+        # Apply LLM-assessed final severity/condition at discharge
+        if discharge_severity in ("low", "medium", "critical"):
+            p.severity = discharge_severity
+        if discharge_condition in ("stable", "worsening", "improving"):
+            p.condition = discharge_condition
+
+        p.location = "discharged"
+        p.discharge_stay_ticks = stay_ticks
+        p.discharge_started_tick = self._tick
+
+        if old_location in ("general_ward", "icu"):
+            self.hospital.free_bed(p.id)
+        elif old_location == "waiting":
+            self.hospital.release_waiting_slot(p.id)
+
+        # Remove from treating doctor's patient list
+        for doctor_agent in self.doctors:
+            if p.id in doctor_agent.doctor.assigned_patient_ids:
+                doctor_agent.doctor.assigned_patient_ids.remove(p.id)
+                doctor_agent._update_workload()
+                break
+
+        self.metrics.record_discharge(pa, self._tick)
+        gx, gy = self.hospital.next_discharged_position()
+        p.grid_x = gx
+        p.grid_y = gy
+        self.queue.remove(p.id)
+
+        self._events_this_tick.append(SimEvent(
+            tick=self._tick,
+            event_type="patient_discharged",
+            entity_id=p.id,
+            entity_type="patient",
+            raw_description=f"{p.name} discharged (stay: {stay_ticks} ticks)",
+            llm_explanation=p.last_event_explanation,
+            severity="info",
+        ))
+        logger.debug(
+            "Tick %d: %s discharged from %s (stay %d ticks)",
+            self._tick, p.name, old_location, stay_ticks,
+        )
 
     def _discharge_patients(self) -> None:
         """
-        Find patients whose treatment is complete and condition != worsening.
-        Move to 'discharged', free their bed, update doctor list.
+        Phase A: Remove patients whose discharge stay has expired (clean up from sim).
+        Phase B: Auto-discharge patients whose treatment is complete.
         """
+        # Phase A: expire patients from discharge zone
+        for pa in list(self.patients.values()):
+            p = pa.patient
+            if p.location == "discharged" and p.discharge_started_tick is not None:
+                elapsed = self._tick - p.discharge_started_tick
+                if elapsed >= p.discharge_stay_ticks:
+                    del self.patients[p.id]
+
+        # Phase B: discharge patients whose treatment is complete
         for pa in list(self.patients.values()):
             p = pa.patient
             if p.location == "discharged":
@@ -622,46 +688,9 @@ class SimulationEngine:
             if elapsed < p.treatment_duration_ticks:
                 continue
             if p.condition == "worsening":
-                continue  # treatment will be extended by _progress_treatment()
+                continue  # treatment extended by patient reevaluation
 
-            # Discharge
-            old_location = p.location
-            p.location = "discharged"
-
-            # Free bed
-            self.hospital.free_bed(p.id)
-
-            # Remove from doctor's list
-            for doctor_agent in self.doctors:
-                if p.id in doctor_agent.doctor.assigned_patient_ids:
-                    doctor_agent.doctor.assigned_patient_ids.remove(p.id)
-                    doctor_agent._update_workload()
-                    break
-
-            # Record in metrics
-            self.metrics.record_discharge(pa, self._tick)
-
-            # Move to discharge zone grid position
-            gx, gy = self.hospital.next_discharged_position()
-            p.grid_x = gx
-            p.grid_y = gy
-
-            self._events_this_tick.append(SimEvent(
-                tick=self._tick,
-                event_type="patient_discharged",
-                entity_id=p.id,
-                entity_type="patient",
-                raw_description=(
-                    f"{p.name} discharged after {elapsed} ticks of treatment"
-                ),
-                llm_explanation=p.last_event_explanation,
-                severity="info",
-            ))
-
-            logger.debug(
-                "Tick %d: %s discharged from %s after %d ticks",
-                self._tick, p.name, old_location, elapsed,
-            )
+            self._move_to_discharge(pa, 2)
 
     def _build_state(self) -> SimulationState:
         """Serialise all agents + hospital + metrics into SimulationState."""
@@ -681,6 +710,9 @@ class SimulationEngine:
             events=list(self._events_this_tick),
             scenario=self._scenario,
             is_running=self._running,
+            arrival_rate=self._arrival_rate,
+            surge_ticks_remaining=self._surge_ticks_remaining,
+            shortage_ticks_remaining=self._shortage_ticks_remaining,
         )
 
 

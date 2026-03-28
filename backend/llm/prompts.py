@@ -16,16 +16,19 @@ from simulation.types import DoctorContext, PatientContext, SimEvent, ArrivalCon
 
 def build_doctor_decision_prompt(ctx: DoctorContext) -> str:
     """
-    Build a triage decision prompt for a specific doctor.
+    Build a ward-aware decision prompt for a specific doctor.
 
-    The doctor must choose which waiting patient to treat next.
-    Output: JSON {"target_patient_id": int, "reason": str, "confidence": float}
+    Action options depend on the doctor's ward:
+      Triage  → "treat" | "general_ward" | "icu" | "discharge"
+      General → "treat" | "icu" | "discharge"
+      ICU     → "treat" | "general_ward" | "discharge"
+
+    Output: JSON {target_patient_id, action, reason, confidence[, discharge_stay_ticks]}
     """
     if not ctx.available_patients:
-        # Shouldn't happen if trigger guard is correct, but be safe
         return (
             "No patients are currently waiting for assignment. "
-            'Respond with: {"target_patient_id": -1, "reason": "No patients waiting", "confidence": 1.0}'
+            '{"target_patient_id": -1, "action": "treat", "reason": "No patients waiting", "confidence": 1.0}'
         )
 
     patients_str = "\n".join([
@@ -35,46 +38,109 @@ def build_doctor_decision_prompt(ctx: DoctorContext) -> str:
         f" | Diagnosis: {p.diagnosis}"
         f" | Waiting: {p.wait_time_ticks} ticks"
         f" | Age: {p.age}"
-        f" | Location: {p.location}"
         for p in ctx.available_patients
     ])
 
     ward_status_lines = []
     if ctx.icu_is_full:
-        ward_status_lines.append("  ⚠ ICU is FULL — no escalation possible")
+        ward_status_lines.append("  ⚠ ICU is FULL")
     if ctx.general_ward_is_full:
-        ward_status_lines.append("  ⚠ General ward is FULL — beds unavailable")
+        ward_status_lines.append("  ⚠ General ward is FULL")
     if not ward_status_lines:
-        ward_status_lines.append("  All wards have capacity available")
+        ward_status_lines.append("  All wards have capacity")
     ward_status = "\n".join(ward_status_lines)
+
+    doctor_ward = getattr(ctx.doctor, "ward", "waiting")
+
+    discharge_fields = (
+        '"discharge_stay_ticks": <int 0-4>,'
+        ' "discharge_severity": "<low|medium|critical>",'
+        ' "discharge_condition": "<stable|improving|worsening>"'
+    )
+
+    if doctor_ward == "waiting":
+        role_desc = "Triage doctor in the Waiting Area"
+        action_guide = """AVAILABLE ACTIONS for each patient (choose the most clinically appropriate):
+  "treat"         — treat the patient here in waiting (only for LOW severity; you can hold up to 5)
+  "general_ward"  — route to General Ward (medium/low needing a bed and ongoing care)
+  "icu"           — route directly to ICU (critical or rapidly deteriorating)
+  "discharge"     — send home from triage (very minor / walk-in, no admission needed)
+
+REQUIRED for treat / general_ward / icu:
+  "treatment_ticks": your clinical estimate of how many ticks treatment will take
+    Low severity treated here: 1–3 ticks
+    General ward admission: 3–8 ticks depending on diagnosis
+    ICU admission: 5–15 ticks for serious/critical cases
+
+For "discharge":
+  - discharge_stay_ticks: 0 = straight home (trivial complaint), 1–4 = brief observation
+  - discharge_severity: patient's severity at the point of discharge
+  - discharge_condition: patient's condition at discharge (usually "stable" or "improving")"""
+        json_schema = (
+            '{"target_patient_id": <int>, "action": "<treat|general_ward|icu|discharge>",'
+            ' "reason": "<first-person>", "confidence": <0.0-1.0>,'
+            ' "treatment_ticks": <int, required unless discharging>,'
+            f' {discharge_fields} (last 3 fields only if action is discharge)}}'
+        )
+
+    elif doctor_ward == "general_ward":
+        role_desc = "General Ward doctor"
+        action_guide = """AVAILABLE ACTIONS for each patient (choose the most clinically appropriate):
+  "treat"     — continue ward care (patient needs more treatment time here)
+  "icu"       — escalate to ICU (condition worsening, needs intensive care)
+  "discharge" — discharge patient (treatment complete, safe to go home)
+
+For "discharge":
+  - discharge_stay_ticks: 1–4 (how long shown in discharge zone before leaving)
+  - discharge_severity: patient's severity at the point of discharge
+  - discharge_condition: their condition at discharge (usually "stable" or "improving")"""
+        json_schema = (
+            '{"target_patient_id": <int>, "action": "<treat|icu|discharge>",'
+            ' "reason": "<first-person>", "confidence": <0.0-1.0>,'
+            f' {discharge_fields} (last 3 fields only if action is discharge)}}'
+        )
+
+    else:  # icu
+        role_desc = "ICU doctor"
+        action_guide = """AVAILABLE ACTIONS for each patient (choose the most clinically appropriate):
+  "treat"         — continue intensive care (patient still needs ICU-level care)
+  "general_ward"  — step down to General Ward (patient improving, no longer needs ICU)
+  "discharge"     — discharge directly from ICU (exceptional recovery)
+
+For "discharge":
+  - discharge_stay_ticks: 1–4 (extended observation typical for ICU discharges)
+  - discharge_severity: patient's severity at the point of discharge
+  - discharge_condition: their condition at discharge"""
+        json_schema = (
+            '{"target_patient_id": <int>, "action": "<treat|general_ward|discharge>",'
+            ' "reason": "<first-person>", "confidence": <0.0-1.0>,'
+            f' {discharge_fields} (last 3 fields only if action is discharge)}}'
+        )
 
     critical_count = sum(1 for p in ctx.available_patients if p.severity == "critical")
     urgency_note = (
-        f"  ⚠ {critical_count} CRITICAL patient(s) require immediate attention!"
+        f"  ⚠ {critical_count} CRITICAL patient(s) need immediate attention!"
         if critical_count > 0
-        else "  No critical patients in queue"
+        else "  No critical patients in your queue"
     )
 
-    return f"""You are Dr. {ctx.doctor.name} ({ctx.doctor.specialty} specialist) at tick {ctx.current_tick}.
+    return f"""You are {ctx.doctor.name} — {role_desc} — at tick {ctx.current_tick}.
 
 HOSPITAL STATUS:
 {ward_status}
 {urgency_note}
-  Your workload: {ctx.doctor.workload}
-  Your current patient count: {len(ctx.doctor.assigned_patient_ids)} / {ctx.doctor.capacity}
-  Total decisions made this session: {ctx.doctor.decisions_made}
+  Your workload: {ctx.doctor.workload} ({len(ctx.doctor.assigned_patient_ids)}/{ctx.doctor.capacity} patients)
 
-PATIENTS WAITING FOR ASSIGNMENT ({len(ctx.available_patients)} total):
+PATIENTS IN YOUR QUEUE ({len(ctx.available_patients)} total):
 {patients_str}
 
-CLINICAL DECISION REQUIRED:
-Choose exactly one patient to treat next. Apply standard triage principles:
-- Prioritise critical severity over medium over low
-- For equal severity, longer waiting time should take precedence
-- Consider ICU availability when choosing where to assign
+{action_guide}
+
+Pick exactly ONE patient and decide what to do with them.
+Write "reason" in first person as if speaking aloud — e.g. "I'm routing this patient to ICU because she's critical and deteriorating fast" or "I'm discharging him since he's been stable for several ticks and just needs rest". Be direct and clinical.
 
 Respond with valid JSON only — no commentary, no markdown fences:
-{{"target_patient_id": <integer id from list above>, "reason": "<one concise clinical sentence>", "confidence": <0.0-1.0>}}"""
+{json_schema}"""
 
 
 # ─── Patient Reevaluation Prompt ──────────────────────────────────────────────
@@ -120,11 +186,15 @@ WARD CONTEXT:
   Ticks waiting (unattended): {ctx.ticks_waiting}
 
 ASSESSMENT GUIDELINES:
-- Critical patients without treatment for >4 ticks should be marked "worsening"
-- Patients under effective treatment for ≥3 ticks may improve to "stable" or "improving"
-- High ward occupancy (>90%) worsens outcomes due to reduced care quality
-- Only escalate severity if clinical signs justify it
-- Use null for new_severity if severity is unchanged
+- Untreated patients deteriorate: critical >4 ticks → "worsening"; medium >5 ticks → escalate severity
+- Patients in active treatment generally improve, but complications DO happen:
+    - ~20% chance a medium patient develops a complication → escalate to critical
+    - A "worsening" patient in treatment may stabilise slowly or deteriorate further
+    - High ward occupancy (>80%) increases complication risk — reduced care quality
+    - Realistic complications: allergic reaction to medication, secondary infection, cardiac event
+- If treatment is going well (≥2 ticks, condition stable/improving): lean toward "improving"
+- Use null for new_severity if severity is genuinely unchanged
+- Be willing to escalate severity when something has plausibly gone wrong — this makes the simulation realistic
 
 Respond with valid JSON only — no commentary, no markdown fences:
 {{"condition": "<stable|worsening|improving>", "new_severity": "<low|medium|critical>|null", "priority_change": <true|false>, "reason": "<one concise clinical sentence>"}}"""

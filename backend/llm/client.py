@@ -106,6 +106,7 @@ class OpenRouterLLMClient:
                 reason="No patients waiting for assignment",
                 confidence=1.0,
                 fallback_used=True,
+                action="treat",
             )
 
         prompt = build_doctor_decision_prompt(context)
@@ -354,11 +355,47 @@ class OpenRouterLLMClient:
                 )
                 return self._rule_based_doctor_fallback(context)
 
+            action = str(data.get("action", "treat"))
+            if action not in ("treat", "general_ward", "icu", "discharge"):
+                action = "treat"
+
+            treatment_ticks: Optional[int] = None
+            raw_tt = data.get("treatment_ticks")
+            if raw_tt is not None:
+                try:
+                    treatment_ticks = max(1, min(20, int(raw_tt)))
+                except (TypeError, ValueError):
+                    treatment_ticks = None
+
+            discharge_stay: Optional[int] = None
+            discharge_severity: Optional[str] = None
+            discharge_condition: Optional[str] = None
+            if action == "discharge":
+                raw_stay = data.get("discharge_stay_ticks")
+                if raw_stay is not None:
+                    try:
+                        discharge_stay = max(0, min(8, int(raw_stay)))
+                    except (TypeError, ValueError):
+                        discharge_stay = 0
+
+                raw_sev = data.get("discharge_severity")
+                if raw_sev in _VALID_SEVERITIES:
+                    discharge_severity = raw_sev
+
+                raw_cond = data.get("discharge_condition")
+                if raw_cond in _VALID_CONDITIONS:
+                    discharge_condition = raw_cond
+
             return DoctorDecision(
                 target_patient_id=pid,
                 reason=str(data.get("reason", "LLM triage decision")),
                 confidence=_safe_float(data.get("confidence", 0.8), 0.0, 1.0),
                 fallback_used=False,
+                action=action,
+                discharge_stay_ticks=discharge_stay,
+                discharge_severity=discharge_severity,
+                discharge_condition=discharge_condition,
+                treatment_ticks=treatment_ticks,
             )
         except Exception as exc:
             logger.warning(
@@ -437,6 +474,7 @@ class OpenRouterLLMClient:
                 reason="No patients available",
                 confidence=1.0,
                 fallback_used=True,
+                action="treat",
             )
 
         _severity_rank = {"critical": 2, "medium": 1, "low": 0}
@@ -452,6 +490,7 @@ class OpenRouterLLMClient:
             ),
             confidence=1.0,
             fallback_used=True,
+            action="treat",
         )
 
     def _rule_based_patient_fallback(self, context: PatientContext) -> PatientUpdate:

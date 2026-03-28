@@ -186,15 +186,15 @@ async def _handle_command(
     elif command == "update_config":
         raw_config = msg.get("config", {})
         try:
-            from simulation.types import ScenarioConfig
-            cfg = ScenarioConfig(**raw_config)
-            engine.apply_config(cfg)
+            if "arrival_rate_per_tick" in raw_config:
+                engine._arrival_rate = float(raw_config["arrival_rate_per_tick"])
+                engine.config.arrival_rate_per_tick = engine._arrival_rate
             await manager.send_to(ws, {
                 "type": "config_ack",
                 "config": raw_config,
                 "tick": engine.current_tick,
             })
-        except (TypeError, KeyError) as exc:
+        except Exception as exc:
             await manager.send_to(ws, {
                 "type": "error",
                 "message": f"Invalid config: {exc}",

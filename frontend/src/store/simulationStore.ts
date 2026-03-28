@@ -20,6 +20,9 @@ interface SimulationStore {
   isRunning: boolean;
   scenario: string;
   simDatetime: string;
+  arrivalRate: number;
+  surgeTicks: number;
+  shortageTicks: number;
   patients: Patient[];
   doctors: Doctor[];
   metrics: Metrics | null;
@@ -45,6 +48,9 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   isRunning: false,
   scenario: 'normal',
   simDatetime: 'Monday 06:00',
+  arrivalRate: 1.5,
+  surgeTicks: 0,
+  shortageTicks: 0,
   patients: [],
   doctors: [],
   metrics: null,
@@ -59,6 +65,9 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       isRunning: state.is_running,
       scenario: state.scenario,
       simDatetime: state.sim_datetime,
+      arrivalRate: state.arrival_rate,
+      surgeTicks: state.surge_ticks_remaining,
+      shortageTicks: state.shortage_ticks_remaining,
       patients: state.patients,
       doctors: state.doctors,
       metrics: state.metrics,

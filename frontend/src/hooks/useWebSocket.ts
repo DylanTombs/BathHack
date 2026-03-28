@@ -1,6 +1,7 @@
 import { useEffect, useRef, useCallback } from 'react';
 import { useSimulationStore } from '../store/simulationStore';
 import { useUIStore } from '../store/uiStore';
+// useUIStore.getState() used inside ws handler to check current selection without stale closure
 import type { SimulationState, ExplanationResponse, ScenarioConfig } from '../types/simulation';
 import type { MetricsHistoryPoint } from '../store/simulationStore';
 
@@ -29,7 +30,13 @@ export function useWebSocket() {
         if (msg.type === 'sim_state') {
           applyState(msg as SimulationState);
         } else if (msg.type === 'explanation') {
-          setExplanation((msg as ExplanationResponse).explanation);
+          const r = msg as ExplanationResponse;
+          const { selectedEntityId, selectedEntityType } = useUIStore.getState();
+          if (r.target_id === selectedEntityId && r.target_type === selectedEntityType) {
+            setExplanation(r.explanation);
+          } else {
+            setExplanationLoading(false);
+          }
         } else if (msg.type === 'metrics_history') {
           seedHistory(msg.snapshots as MetricsHistoryPoint[]);
         } else if (msg.type === 'command_ack') {

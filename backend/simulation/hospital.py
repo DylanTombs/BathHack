@@ -21,7 +21,7 @@ _ZONES = {
     "waiting":      (0.0,  7.0, 0.0,  5.0),   # (x_start, x_end, y_start, y_end)
     "general_ward": (0.0, 11.0, 6.0, 12.0),
     "icu":          (12.0, 19.0, 6.0, 12.0),
-    "discharged":   (0.0, 19.0, 13.0, 14.0),
+    "discharged":   (8.0, 19.0, 0.0,  5.0),   # top-right, matches frontend Discharge zone
 }
 
 _WAITING_CAPACITY = 50

@@ -33,6 +33,15 @@ logger = logging.getLogger(__name__)
 # ─── Simulation constants ──────────────────────────────────────────────────────
 DOCTOR_LLM_COOLDOWN_TICKS = 3
 DOCTOR_CAPACITY = 3
+TRIAGE_CAPACITY = 5   # Triage doctors handle more patients (routing, not deep treatment)
+
+_SPECIALTY_WARD = {
+    "Triage":     "waiting",
+    "General":    "general_ward",
+    "ICU":        "icu",
+    "Emergency":  "general_ward",
+    "Cardiology": "icu",
+}
 
 # ─── Doctor cosmetics ──────────────────────────────────────────────────────────
 _DOCTOR_NAMES = [
@@ -142,37 +151,11 @@ class DoctorAgent:
         candidates: list["PatientAgent"],
         hospital: "Hospital",
     ) -> bool:
-        """
-        LLM is triggered when:
-          - ≥2 critical patients are waiting
-          - OR ICU is full AND a critical patient is in general_ward
-          - OR workload is 'overwhelmed'
-          - AND cooldown period has elapsed
-        """
+        """Always use LLM when available, with a 1-tick cooldown to avoid
+        multiple calls within the same tick for the same doctor."""
         if self._llm_callback is None:
             return False
-        if tick - self._last_llm_tick < DOCTOR_LLM_COOLDOWN_TICKS:
-            return False
-
-        critical_count = sum(
-            1 for pa in candidates if pa.patient.severity == "critical"
-        )
-        if critical_count >= 2:
-            return True
-
-        if hospital.is_ward_full("icu"):
-            critical_in_general = any(
-                pa.patient.severity == "critical"
-                and pa.patient.location == "general_ward"
-                for pa in candidates
-            )
-            if critical_in_general:
-                return True
-
-        if self.doctor.workload == "overwhelmed":
-            return True
-
-        return False
+        return tick - self._last_llm_tick >= 1
 
     async def _llm_decide(
         self,
@@ -213,38 +196,78 @@ class DoctorAgent:
         chosen = next(
             pa for pa in candidates if pa.patient.id == decision.target_patient_id
         )
-        # Store the LLM reasoning separately so _assign_patient can use it
-        # (avoids confusion with patient-level last_event_explanation)
+        # Store the LLM reasoning and action so _assign_patient can use them
         chosen._pending_doctor_reason = decision.reason
+        chosen._pending_doctor_confidence = decision.confidence
+        chosen._pending_decision_action = decision.action
+        if decision.discharge_stay_ticks is not None:
+            chosen._pending_discharge_stay = decision.discharge_stay_ticks
+        if decision.discharge_severity is not None:
+            chosen._pending_discharge_severity = decision.discharge_severity
+        if decision.discharge_condition is not None:
+            chosen._pending_discharge_condition = decision.discharge_condition
+        if decision.treatment_ticks is not None:
+            chosen._pending_treatment_ticks = decision.treatment_ticks
         return chosen
 
     def _assign_patient(self, patient: "PatientAgent", tick: int) -> SimEvent:
         """
         Record the assignment on both doctor and patient.
+        If action is a routing action (general_ward/icu/discharge), set _pending_route_action
+        on the patient agent instead of consuming a capacity slot.
         Returns a doctor_decision SimEvent.
         """
         p = patient.patient
         d = self.doctor
 
-        d.assigned_patient_ids.append(p.id)
-        d.decisions_made += 1
-        d.is_available = len(d.assigned_patient_ids) < d.capacity
-
-        p.assigned_doctor_id = d.id
-        p.treatment_started_tick = tick
-
-        # Only use an LLM explanation if the DOCTOR's LLM was invoked for this decision
-        # (_pending_doctor_reason is set exclusively by _llm_decide, not by patient reevaluation)
         explanation = getattr(patient, "_pending_doctor_reason", None)
-        if hasattr(patient, "_pending_doctor_reason"):
-            del patient._pending_doctor_reason
+        confidence = getattr(patient, "_pending_doctor_confidence", None)
+        action = getattr(patient, "_pending_decision_action", "treat")
+        discharge_stay = getattr(patient, "_pending_discharge_stay", None)
+        discharge_severity = getattr(patient, "_pending_discharge_severity", None)
+        discharge_condition = getattr(patient, "_pending_discharge_condition", None)
+        treatment_ticks = getattr(patient, "_pending_treatment_ticks", None)
+        for attr in ("_pending_doctor_reason", "_pending_doctor_confidence",
+                     "_pending_decision_action", "_pending_discharge_stay",
+                     "_pending_discharge_severity", "_pending_discharge_condition",
+                     "_pending_treatment_ticks"):
+            if hasattr(patient, attr):
+                delattr(patient, attr)
+
+        # Store last decision on the doctor for UI display
+        d.decisions_made += 1
+        d.last_decision_reason = explanation or None
+        d.last_decision_confidence = confidence
+        d.last_decision_patient_id = p.id
+
+        if action in ("general_ward", "icu", "discharge"):
+            # Routing: don't consume a capacity slot — engine handles the move
+            patient._pending_route_action = action
+            if discharge_stay is not None:
+                patient._pending_discharge_stay = discharge_stay
+            if discharge_severity is not None:
+                patient._pending_discharge_severity = discharge_severity
+            if discharge_condition is not None:
+                patient._pending_discharge_condition = discharge_condition
+            if treatment_ticks is not None:
+                patient._pending_treatment_ticks = treatment_ticks
+            raw_desc = f"{d.name} routed {p.name} → {action}"
+        else:
+            # Normal treat: consume capacity slot, apply triage treatment estimate
+            d.assigned_patient_ids.append(p.id)
+            d.is_available = len(d.assigned_patient_ids) < d.capacity
+            p.assigned_doctor_id = d.id
+            p.treatment_started_tick = tick
+            if treatment_ticks is not None:
+                p.treatment_duration_ticks = treatment_ticks
+            raw_desc = f"{d.name} assigned to {p.name} ({p.severity})"
 
         return SimEvent(
             tick=tick,
             event_type="doctor_decision",
             entity_id=d.id,
             entity_type="doctor",
-            raw_description=f"{d.name} assigned to {p.name} ({p.severity})",
+            raw_description=raw_desc,
             llm_explanation=explanation,
             severity=(
                 "critical" if p.severity == "critical"
@@ -310,13 +333,14 @@ class DoctorAgent:
             id=doctor_id,
             name=name,
             assigned_patient_ids=[],
-            capacity=DOCTOR_CAPACITY,
+            capacity=TRIAGE_CAPACITY if specialty == "Triage" else DOCTOR_CAPACITY,
             workload="light",
             specialty=specialty,
             grid_x=grid_x,
             grid_y=grid_y,
             is_available=True,
             decisions_made=0,
+            ward=_SPECIALTY_WARD.get(specialty, "general_ward"),
         )
         return DoctorAgent(doctor, llm_callback=llm_callback)
 
@@ -355,13 +379,14 @@ class DoctorAgent:
             id=doctor_id,
             name=name,
             assigned_patient_ids=[],
-            capacity=DOCTOR_CAPACITY,
+            capacity=TRIAGE_CAPACITY if specialty == "Triage" else DOCTOR_CAPACITY,
             workload="light",
             specialty=specialty,
             grid_x=grid_x,
             grid_y=grid_y,
             is_available=True,
             decisions_made=0,
+            ward=_SPECIALTY_WARD.get(specialty, "general_ward"),
         )
 
         return DoctorAgent(doctor, llm_callback=llm_callback)
