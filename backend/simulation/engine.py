@@ -304,19 +304,26 @@ class SimulationEngine:
 
     def trigger_shortage(self) -> None:
         """
-        Staff shortage:
-          - 50% of doctors randomly incapacitated for SHORTAGE_DURATION_TICKS ticks
-          - Emit staff_shortage event
+        Staff shortage: reduce to exactly 1 doctor per specialty.
+        All others are incapacitated for SHORTAGE_DURATION_TICKS ticks.
         """
-        available_ids = [d.doctor.id for d in self.doctors]
-        n_incapacitate = max(1, len(available_ids) // 2)
-        self._incapacitated_doctor_ids = random.sample(available_ids, n_incapacitate)
+        from collections import defaultdict
+        by_specialty: dict[str, list[int]] = defaultdict(list)
+        for d in self.doctors:
+            by_specialty[d.doctor.specialty].append(d.doctor.id)
+
+        incapacitate = []
+        for ids in by_specialty.values():
+            incapacitate.extend(ids[1:])  # keep first of each specialty, bench the rest
+
+        self._incapacitated_doctor_ids = incapacitate
         self._shortage_ticks_remaining = SHORTAGE_DURATION_TICKS
         self._scenario = "shortage"
+        n_incapacitate = len(incapacitate)
+        n_total = len(self.doctors)
         logger.info(
-            "Shortage triggered at tick %d; doctors incapacitated: %s",
-            self._tick,
-            self._incapacitated_doctor_ids,
+            "Shortage triggered at tick %d; %d/%d doctors incapacitated (1 per specialty kept)",
+            self._tick, n_incapacitate, n_total,
         )
         self._events_this_tick.append(SimEvent(
             tick=self._tick,
@@ -324,8 +331,8 @@ class SimulationEngine:
             entity_id=0,
             entity_type="doctor",
             raw_description=(
-                f"Staff shortage: {n_incapacitate} of {len(available_ids)} doctors "
-                f"unavailable for {SHORTAGE_DURATION_TICKS} ticks"
+                f"Staff shortage: reduced to 1 doctor per specialty "
+                f"({n_total - n_incapacitate} active, {n_incapacitate} stood down)"
             ),
             llm_explanation=None,
             severity="critical",

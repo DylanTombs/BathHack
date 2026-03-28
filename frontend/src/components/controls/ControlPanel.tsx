@@ -2,7 +2,7 @@ import React, { useState, useCallback } from 'react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSimulationStore } from '../../store/simulationStore';
 
-const SPECIALTIES = ['General', 'ICU', 'Triage', 'Emergency', 'Cardiology'];
+const SPECIALTIES = ['General', 'ICU', 'Triage'];
 
 export const ControlPanel: React.FC = () => {
   const { isRunning, scenario, connected, doctors } = useSimulationStore();
