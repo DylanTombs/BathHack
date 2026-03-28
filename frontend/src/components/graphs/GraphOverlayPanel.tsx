@@ -1,6 +1,7 @@
-import React, { useEffect, useRef, useMemo } from 'react';
-import { useUIStore, type GraphPreset } from '../../store/uiStore';
+import React, { useRef, useEffect, useMemo } from 'react';
+import { useUIStore, type GraphPreset, type RightPanelTab } from '../../store/uiStore';
 import { useSimulationStore } from '../../store/simulationStore';
+import { EventItem } from '../event-log/EventItem';
 import {
   AreaChart, Area, LineChart, Line, BarChart, Bar,
   XAxis, YAxis, CartesianGrid, Tooltip, Legend, ResponsiveContainer,
@@ -8,10 +9,17 @@ import {
 
 // ── Preset definitions ────────────────────────────────────────────────────────
 
+interface SeriesConfig {
+  key: string;
+  name: string;
+  color: string;
+  fill?: string;
+}
+
 interface ChartConfig {
   title: string;
   type: 'area' | 'line' | 'bar';
-  series: { key: string; name: string; color: string; fill?: string }[];
+  series: SeriesConfig[];
   yDomain?: [number, number];
   yFormatter?: (v: number) => string;
 }
@@ -23,17 +31,19 @@ interface Preset {
   charts: [ChartConfig, ChartConfig, ChartConfig];
 }
 
+const pct = (v: number) => `${v}%`;
+
 const PRESETS: Preset[] = [
   {
     id: 'overview',
     label: 'Overview',
-    description: 'General ward, queue and discharge throughput',
+    description: 'Ward occupancy, queue pressure and discharge rate',
     charts: [
       {
         title: 'Ward Occupancy %',
         type: 'area',
         yDomain: [0, 100],
-        yFormatter: (v) => `${v}%`,
+        yFormatter: pct,
         series: [
           { key: 'general_ward_occupancy_pct', name: 'General', color: '#22c55e', fill: '#dcfce7' },
           { key: 'icu_occupancy_pct',          name: 'ICU',     color: '#f59e0b', fill: '#fef3c7' },
@@ -65,9 +75,9 @@ const PRESETS: Preset[] = [
         title: 'ICU Occupancy %',
         type: 'area',
         yDomain: [0, 100],
-        yFormatter: (v) => `${v}%`,
+        yFormatter: pct,
         series: [
-          { key: 'icu_occupancy_pct', name: 'ICU %', color: '#ef4444', fill: '#fee2e2' },
+          { key: 'icu_occupancy_pct', name: 'ICU', color: '#ef4444', fill: '#fee2e2' },
         ],
       },
       {
@@ -81,7 +91,7 @@ const PRESETS: Preset[] = [
         title: 'Doctor Utilisation %',
         type: 'area',
         yDomain: [0, 100],
-        yFormatter: (v) => `${v}%`,
+        yFormatter: pct,
         series: [
           { key: 'doctor_utilisation_pct', name: 'Utilisation', color: '#8b5cf6', fill: '#ede9fe' },
         ],
@@ -97,7 +107,7 @@ const PRESETS: Preset[] = [
         title: 'General Ward Occupancy %',
         type: 'area',
         yDomain: [0, 100],
-        yFormatter: (v) => `${v}%`,
+        yFormatter: pct,
         series: [
           { key: 'general_ward_occupancy_pct', name: 'General Ward', color: '#22c55e', fill: '#dcfce7' },
         ],
@@ -106,7 +116,7 @@ const PRESETS: Preset[] = [
         title: 'Doctor Utilisation %',
         type: 'line',
         yDomain: [0, 100],
-        yFormatter: (v) => `${v}%`,
+        yFormatter: pct,
         series: [
           { key: 'doctor_utilisation_pct', name: 'Doctor load', color: '#8b5cf6' },
         ],
@@ -122,7 +132,7 @@ const PRESETS: Preset[] = [
   },
 ];
 
-// ── Individual chart renderer ─────────────────────────────────────────────────
+// ── Chart block ───────────────────────────────────────────────────────────────
 
 const ChartBlock: React.FC<{ config: ChartConfig; data: object[] }> = ({ config, data }) => {
   const tickStyle = { fontSize: 9 };
@@ -185,90 +195,101 @@ const ChartBlock: React.FC<{ config: ChartConfig; data: object[] }> = ({ config,
   );
 };
 
-// ── Main panel ────────────────────────────────────────────────────────────────
+// ── Right panel ───────────────────────────────────────────────────────────────
+
+const TABS: { id: RightPanelTab; label: string }[] = [
+  { id: 'metrics', label: 'Live Metrics' },
+  { id: 'events',  label: 'Event Log'    },
+];
 
 export const GraphOverlayPanel: React.FC = () => {
-  const { graphsOpen, activePreset, closeGraph, setPreset } = useUIStore();
-  const { metricsHistory } = useSimulationStore();
-  const closeButtonRef = useRef<HTMLButtonElement>(null);
+  const { rightPanelTab, activePreset, setRightPanelTab, setPreset } = useUIStore();
+  const { metricsHistory, events } = useSimulationStore();
   const data = useMemo(() => metricsHistory.slice(-60), [metricsHistory]);
   const preset = PRESETS.find(p => p.id === activePreset) ?? PRESETS[0];
+  const eventBottomRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (graphsOpen) closeButtonRef.current?.focus();
-  }, [graphsOpen]);
-
-  useEffect(() => {
-    const handler = (e: globalThis.KeyboardEvent) => {
-      if (e.key === 'Escape' && graphsOpen) closeGraph();
-    };
-    document.addEventListener('keydown', handler);
-    return () => document.removeEventListener('keydown', handler);
-  }, [graphsOpen, closeGraph]);
-
-  if (!graphsOpen) return null;
+    if (rightPanelTab === 'events') {
+      eventBottomRef.current?.scrollIntoView({ behavior: 'smooth' });
+    }
+  }, [events, rightPanelTab]);
 
   return (
-    <>
-      {/* Backdrop */}
-      <div className="fixed inset-0 z-40 bg-black/20" onClick={closeGraph} aria-hidden="true" />
-
-      {/* Floating panel — right-aligned with margin */}
-      <div
-        role="dialog"
-        aria-label="Live metric graphs"
-        aria-modal="true"
-        className="fixed z-50 bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col"
-        style={{
-          top: '72px',
-          right: '24px',
-          width: '400px',
-          height: 'calc(100vh - 96px)',
-        }}
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b border-gray-200 shrink-0">
-          <h2 className="text-sm font-semibold text-gray-800">Live Metrics</h2>
+    <div
+      className="fixed z-40 bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col"
+      style={{
+        top: '72px',
+        right: '24px',
+        width: '400px',
+        height: 'calc(100vh - 96px)',
+      }}
+    >
+      {/* Tab bar */}
+      <div className="flex border-b border-gray-200 shrink-0 rounded-t-xl overflow-hidden">
+        {TABS.map(tab => (
           <button
-            ref={closeButtonRef}
-            onClick={closeGraph}
-            className="p-1.5 text-gray-400 hover:text-gray-700 rounded transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400"
-            aria-label="Close graph panel"
+            key={tab.id}
+            role="tab"
+            aria-selected={rightPanelTab === tab.id}
+            onClick={() => setRightPanelTab(tab.id)}
+            className={[
+              'flex-1 py-3 text-sm font-medium border-b-2 transition-colors focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400 focus-visible:ring-inset',
+              rightPanelTab === tab.id
+                ? 'border-blue-500 text-blue-700 bg-white'
+                : 'border-transparent text-gray-500 bg-gray-50 hover:text-gray-700 hover:border-gray-300',
+            ].join(' ')}
           >
-            ✕
+            {tab.label}
           </button>
-        </div>
+        ))}
+      </div>
 
-        {/* Preset selector */}
-        <div className="px-4 py-3 border-b border-gray-100 shrink-0">
-          <p className="text-xs text-gray-400 mb-2 uppercase tracking-wide font-medium">Preset</p>
-          <div className="flex gap-2">
-            {PRESETS.map(p => (
-              <button
-                key={p.id}
-                onClick={() => setPreset(p.id)}
-                title={p.description}
-                className={[
-                  'flex-1 py-1.5 px-2 rounded-lg text-xs font-medium transition-colors border focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
-                  activePreset === p.id
-                    ? 'bg-blue-600 text-white border-blue-600'
-                    : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600',
-                ].join(' ')}
-              >
-                {p.label}
-              </button>
+      {/* Live Metrics tab */}
+      {rightPanelTab === 'metrics' && (
+        <>
+          <div className="px-3 py-2.5 border-b border-gray-100 shrink-0">
+            <div className="flex gap-1.5">
+              {PRESETS.map(p => (
+                <button
+                  key={p.id}
+                  onClick={() => setPreset(p.id)}
+                  title={p.description}
+                  className={[
+                    'flex-1 py-1.5 px-1 rounded-lg text-xs font-medium transition-colors border focus:outline-none focus-visible:ring-2 focus-visible:ring-blue-400',
+                    activePreset === p.id
+                      ? 'bg-blue-600 text-white border-blue-600'
+                      : 'bg-white text-gray-600 border-gray-200 hover:border-blue-300 hover:text-blue-600',
+                  ].join(' ')}
+                >
+                  {p.label}
+                </button>
+              ))}
+            </div>
+            <p className="text-xs text-gray-400 mt-1.5">{preset.description}</p>
+          </div>
+
+          <div className="flex-1 flex flex-col gap-3 p-3 overflow-hidden min-h-0">
+            {preset.charts.map((cfg, i) => (
+              <ChartBlock key={`${preset.id}-${i}`} config={cfg} data={data} />
             ))}
           </div>
-          <p className="text-xs text-gray-400 mt-1.5">{preset.description}</p>
-        </div>
+        </>
+      )}
 
-        {/* Three charts stacked */}
-        <div className="flex-1 flex flex-col gap-4 p-4 overflow-hidden min-h-0">
-          {preset.charts.map((cfg, i) => (
-            <ChartBlock key={`${preset.id}-${i}`} config={cfg} data={data} />
-          ))}
+      {/* Event Log tab */}
+      {rightPanelTab === 'events' && (
+        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+          {events.length === 0 ? (
+            <p className="text-xs text-gray-400 text-center pt-8">Waiting for events…</p>
+          ) : (
+            events.map((event, i) => (
+              <EventItem key={`${event.tick}-${event.entity_id}-${i}`} event={event} />
+            ))
+          )}
+          <div ref={eventBottomRef} />
         </div>
-      </div>
-    </>
+      )}
+    </div>
   );
 };
