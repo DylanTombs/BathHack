@@ -15,7 +15,7 @@ export const Layout: React.FC = () => {
   const { requestExplanation } = useWebSocket();
 
   return (
-    <div className="min-h-screen bg-gray-100 flex flex-col">
+    <div className="h-screen bg-gray-100 flex flex-col overflow-hidden">
       {/* Header */}
       <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
@@ -36,7 +36,7 @@ export const Layout: React.FC = () => {
       <MetricsBanner />
 
       {/* Main layout: map fills space, fixed panels float over */}
-      <div className="flex-1 overflow-auto p-4" style={{ minHeight: 0 }}>
+      <div className="flex-1 overflow-hidden" style={{ minHeight: 0 }}>
         <HospitalMap />
       </div>
 
