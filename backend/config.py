@@ -14,7 +14,7 @@ load_dotenv()
 
 @dataclass
 class Config:
-    anthropic_api_key: str
+    openrouter_api_key: str
     llm_model: str
     tick_interval_seconds: float
     max_beds_general: int
@@ -26,8 +26,8 @@ class Config:
 
 def load_config() -> Config:
     cfg = Config(
-        anthropic_api_key=os.getenv("ANTHROPIC_API_KEY", ""),
-        llm_model=os.getenv("LLM_MODEL", "claude-haiku-4-5-20251001"),
+        openrouter_api_key=os.getenv("OPENROUTER_API_KEY", ""),
+        llm_model=os.getenv("LLM_MODEL", "openai/gpt-4o-mini"),
         tick_interval_seconds=float(os.getenv("TICK_INTERVAL_SECONDS", "1.0")),
         max_beds_general=int(os.getenv("MAX_BEDS_GENERAL", "20")),
         max_beds_icu=int(os.getenv("MAX_BEDS_ICU", "5")),

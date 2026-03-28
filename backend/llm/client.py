@@ -1,8 +1,8 @@
 """
-AnthropicLLMClient — Core LLM wrapper implementing the LLMInterface protocol.
+OpenRouterLLMClient — Core LLM wrapper implementing the LLMInterface protocol.
 
 Responsibilities:
-  - Wraps anthropic.AsyncAnthropic with retry, timeout, and fallback logic
+  - Wraps openai.AsyncOpenAI (pointed at OpenRouter) with retry, timeout, and fallback logic
   - Parses structured JSON responses for doctor/patient decisions
   - Falls back gracefully to rule-based logic on any failure
   - Tracks request / fallback counts for cost monitoring
@@ -10,7 +10,7 @@ Responsibilities:
 This class is injected into SimulationEngine as `llm_callback`.
 
 Usage:
-    client = AnthropicLLMClient(api_key="sk-ant-...", model="claude-haiku-4-5-20251001")
+    client = OpenRouterLLMClient(api_key="sk-or-...", model="openai/gpt-4o-mini")
     decision = await client.doctor_decide(context)
     update   = await client.patient_reevaluate(context)
     text     = await client.explain_event(event)
@@ -25,7 +25,7 @@ import logging
 import re
 from typing import Any, Callable, Optional
 
-import anthropic
+import openai
 
 from simulation.types import (
     DoctorContext,
@@ -43,6 +43,8 @@ from llm.prompts import (
 
 logger = logging.getLogger(__name__)
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
+
 # ── System prompt (shared by all calls) ───────────────────────────────────────
 SYSTEM_PROMPT = (
     "You are the decision-making core of a hospital simulation system. "
@@ -57,7 +59,7 @@ _VALID_CONDITIONS = frozenset({"stable", "worsening", "improving"})
 _VALID_SEVERITIES = frozenset({"low", "medium", "critical"})
 
 
-class AnthropicLLMClient:
+class OpenRouterLLMClient:
     """
     Implements the LLMInterface protocol for use with SimulationEngine.
 
@@ -68,15 +70,18 @@ class AnthropicLLMClient:
 
     MAX_TOKENS_DECISION = 256      # small structured JSON response
     MAX_TOKENS_EXPLANATION = 512   # paragraph of natural language
-    TIMEOUT_SECONDS = 3.0          # simulation ticks can't wait long
+    TIMEOUT_SECONDS = 10.0         # OpenRouter may have higher latency than direct API
     MAX_RETRIES = 2                # retries only on RateLimitError
 
     def __init__(
         self,
         api_key: str,
-        model: str = "claude-haiku-4-5-20251001",
+        model: str = "openai/gpt-4o-mini",
     ) -> None:
-        self._client = anthropic.AsyncAnthropic(api_key=api_key)
+        self._client = openai.AsyncOpenAI(
+            api_key=api_key,
+            base_url=OPENROUTER_BASE_URL,
+        )
         self._model = model
         self._request_count = 0
         self._fallback_count = 0
@@ -211,21 +216,23 @@ class AnthropicLLMClient:
 
     async def _call_llm(self, prompt: str, max_tokens: int) -> Optional[str]:
         """
-        Direct API call with exponential backoff retry on RateLimitError.
+        Direct OpenRouter API call with exponential backoff retry on RateLimitError.
 
         Retries up to MAX_RETRIES times with 0.5s / 1.0s delays.
         Other API errors are raised immediately.
         """
         for attempt in range(self.MAX_RETRIES + 1):
             try:
-                response = await self._client.messages.create(
+                response = await self._client.chat.completions.create(
                     model=self._model,
                     max_tokens=max_tokens,
-                    system=SYSTEM_PROMPT,
-                    messages=[{"role": "user", "content": prompt}],
+                    messages=[
+                        {"role": "system", "content": SYSTEM_PROMPT},
+                        {"role": "user", "content": prompt},
+                    ],
                 )
-                return response.content[0].text
-            except anthropic.RateLimitError:
+                return response.choices[0].message.content
+            except openai.RateLimitError:
                 if attempt < self.MAX_RETRIES:
                     backoff = 0.5 * (2 ** attempt)  # 0.5s, 1.0s
                     logger.warning(
@@ -235,7 +242,7 @@ class AnthropicLLMClient:
                     await asyncio.sleep(backoff)
                 else:
                     raise
-            except anthropic.APIStatusError as exc:
+            except openai.APIStatusError as exc:
                 # Re-raise all non-rate-limit API errors immediately
                 raise exc
         return None  # unreachable but satisfies type checker
@@ -396,6 +403,10 @@ class AnthropicLLMClient:
             "fallback_rate": self._fallback_count / max(1, total),
             "model": self._model,
         }
+
+
+# Alias so existing imports (e.g. `from llm.client import AnthropicLLMClient`) keep working
+AnthropicLLMClient = OpenRouterLLMClient
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────

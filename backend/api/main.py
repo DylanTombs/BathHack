@@ -33,7 +33,7 @@ config = load_config()
 ws_manager = WebSocketManager()
 
 llm_client = AnthropicLLMClient(
-    api_key=config.anthropic_api_key,
+    api_key=config.openrouter_api_key,
     model=config.llm_model,
 )
 explainer = ExplainerService(llm_client)
