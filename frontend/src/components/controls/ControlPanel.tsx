@@ -13,26 +13,15 @@ export const ControlPanel: React.FC = () => {
     wards,
     arrivalRate: storeArrivalRate,
     severityLevel: storeSeverityLevel,
-    tickSpeedSeconds,
     surgeTicks,
     shortageTicks,
   } = useSimulationStore();
   const { startSim, pauseSim, resetSim, triggerSurge, triggerShortage, triggerRecovery, updateConfig, addDoctor, removeDoctor, addBed, removeBed } = useWebSocket();
   const [arrivalRate, setArrivalRate] = useState(1.5);
   const [severityLevel, setSeverityLevel] = useState(2);
-  const [tickSpeedMultiplier, setTickSpeedMultiplier] = useState(1.0);
-
   // Sync sliders from backend state
   useEffect(() => { setArrivalRate(storeArrivalRate); }, [storeArrivalRate]);
   useEffect(() => { setSeverityLevel(storeSeverityLevel); }, [storeSeverityLevel]);
-  // Sync tick speed only once on initial connect (tickSpeedSeconds starts at 1.0 default)
-  const [tickSpeedSynced, setTickSpeedSynced] = useState(false);
-  useEffect(() => {
-    if (!tickSpeedSynced && tickSpeedSeconds > 0 && tickSpeedSeconds !== 1.0) {
-      setTickSpeedMultiplier(Math.max(0.25, Math.min(10, 1 / tickSpeedSeconds)));
-      setTickSpeedSynced(true);
-    }
-  }, [tickSpeedSeconds, tickSpeedSynced]);
 
   const [selectedSpecialty, setSelectedSpecialty] = useState('General');
   const [selectedWard, setSelectedWard] = useState<'general_ward' | 'icu'>('general_ward');
@@ -134,24 +123,6 @@ export const ControlPanel: React.FC = () => {
                 updateConfig({ arrival_rate_per_tick: v });
               }}
               className="w-full accent-blue-500"
-            />
-          </label>
-
-          {/* Tick speed slider */}
-          <label className="block">
-            <div className="flex justify-between text-xs text-gray-600 mb-1">
-              <span>Tick Speed</span>
-              <span className="font-mono">{tickSpeedMultiplier.toFixed(1)}x</span>
-            </div>
-            <input
-              type="range" min={0.25} max={10} step={0.25}
-              value={tickSpeedMultiplier}
-              onChange={e => {
-                const multiplier = parseFloat(e.target.value);
-                setTickSpeedMultiplier(multiplier);
-                updateConfig({ tick_speed_seconds: 1 / multiplier });
-              }}
-              className="w-full accent-indigo-500"
             />
           </label>
 
