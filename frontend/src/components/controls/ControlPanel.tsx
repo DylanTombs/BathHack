@@ -126,10 +126,10 @@ export const ControlPanel: React.FC = () => {
             />
           </label>
 
-          {/* Severity level slider */}
+          {/* Casualty rate slider */}
           <label className="block">
             <div className="flex justify-between text-xs text-gray-600 mb-1">
-              <span>Severity</span>
+              <span>Casualty Rate</span>
               <span className="font-mono font-semibold" style={{
                 color: ['', '#22c55e', '#f59e0b', '#f97316', '#ef4444'][severityLevel]
               }}>
