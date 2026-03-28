@@ -16,11 +16,11 @@ export const EventLog: React.FC = () => {
         <h3 className="text-xs font-semibold text-gray-500 uppercase">Event Log</h3>
         <span className="text-xs text-gray-400">{events.length} events</span>
       </div>
-      <div className="h-64 overflow-y-auto p-2 space-y-1">
+      <div className="h-64 overflow-y-auto p-2 space-y-2">
         {events.length === 0 ? (
-          <p className="text-xs text-gray-400 text-center pt-8">Waiting for events…</p>
+          <p className="text-sm text-gray-400 text-center pt-8">Waiting for events…</p>
         ) : (
-          events.map((event, i) => <EventItem key={`${event.tick}-${event.entity_id}-${i}`} event={event} />)
+          events.slice(-4).map((event, i) => <EventItem key={`${event.tick}-${event.entity_id}-${i}`} event={event} />)
         )}
         <div ref={bottomRef} />
       </div>

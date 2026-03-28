@@ -9,27 +9,17 @@ const SEVERITY_STYLE: Record<string, string> = {
 };
 
 export const EventItem: React.FC<{ event: SimEvent }> = ({ event }) => {
-  const [expanded, setExpanded] = useState(false);
-  const hasLLM = !!event.llm_explanation;
   const isDeceased = event.event_type === 'patient_deceased';
 
   return (
-    <div className={`text-xs rounded border px-2 py-1.5 ${isDeceased ? SEVERITY_STYLE.deceased : (SEVERITY_STYLE[event.severity] ?? SEVERITY_STYLE.info)}`}>
-      <div className="flex items-start gap-1">
-        <span className="font-mono opacity-60 shrink-0">T{event.tick}</span>
-        <span className="flex-1">
-          {expanded && hasLLM ? event.llm_explanation : event.raw_description}
-        </span>
-        {hasLLM && (
-          <button
-            onClick={() => setExpanded(!expanded)}
-            className="shrink-0 font-medium opacity-70 hover:opacity-100 ml-1"
-            title="Toggle LLM explanation"
-          >
-            {expanded ? '▲' : '🤖'}
-          </button>
-        )}
+    <div className={`rounded border px-3 py-2.5 ${isDeceased ? SEVERITY_STYLE.deceased : (SEVERITY_STYLE[event.severity] ?? SEVERITY_STYLE.info)}`}>
+      <div className="flex items-center gap-2 mb-1">
+        <span className="font-mono opacity-60 shrink-0 text-xs">T{event.tick}</span>
+        <span className="text-sm font-extrabold leading-snug">{event.raw_description}</span>
       </div>
+      {event.llm_explanation && (
+        <p className="text-sm opacity-80 leading-snug pl-7">{event.llm_explanation}</p>
+      )}
     </div>
   );
 };

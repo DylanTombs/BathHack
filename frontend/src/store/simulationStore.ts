@@ -79,10 +79,14 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       metrics: state.metrics,
       wards: state.wards,
     });
-    // Append new events, keep last 50
+    // Append new events, deduplicating by tick+entity+type+description
     const prev = get().events;
-    const combined = [...prev, ...state.events].slice(-50);
-    set({ events: combined });
+    const seen = new Set(prev.map(e => `${e.tick}-${e.entity_id}-${e.event_type}-${e.raw_description}`));
+    const fresh = state.events.filter(e => !seen.has(`${e.tick}-${e.entity_id}-${e.event_type}-${e.raw_description}`));
+    if (fresh.length > 0) {
+      const combined = [...prev, ...fresh].slice(-50);
+      set({ events: combined });
+    }
     // Append to history
     if (state.metrics) {
       const { metrics } = state;
