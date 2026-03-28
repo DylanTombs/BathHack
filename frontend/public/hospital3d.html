@@ -382,6 +382,14 @@ function makeEntLabel(name,status,col,sub){
   labDiv.appendChild(el);
   return el;
 }
+function makeNameLabel(name,col){
+  const hex='#'+col.toString(16).padStart(6,'0');
+  const el=document.createElement('div');
+  el.style.cssText='position:absolute;font:bold 10px sans-serif;color:'+hex+';text-shadow:0 1px 2px rgba(0,0,0,.7);white-space:nowrap;pointer-events:none;transition:opacity .15s;';
+  el.textContent=name;
+  labDiv.appendChild(el);
+  return el;
+}
 function refreshEntLabel(el,name,status,col,sub){
   const hex='#'+col.toString(16).padStart(6,'0');
   el.style.borderLeftColor=hex;
@@ -400,8 +408,12 @@ function animSimEnts(map){
     ent.g.position.set(ent.cx, mv?Math.abs(Math.sin(ent.ph))*0.04:0, ent.cz);
     if(mv) ent.g.rotation.y=Math.atan2(ddx,ddz);
     const lp=new T.Vector3(ent.cx,2.1,ent.cz).project(cam);
-    ent.el.style.transform='translate(-50%,-50%) translate('+((lp.x+1)/2*W)+'px,'+((-lp.y+1)/2*H)+'px)';
-    ent.el.style.opacity=lp.z<1?'1':'0';
+    const px=((lp.x+1)/2*W)+'px', py=((-lp.y+1)/2*H)+'px';
+    const vis=lp.z<1;
+    ent.el.style.transform='translate(-50%,-50%) translate('+px+','+py+')';
+    ent.el.style.opacity=(ent.hovered&&vis)?'1':'0';
+    ent.nel.style.transform='translate(-50%,-100%) translate('+px+','+py+')';
+    ent.nel.style.opacity=(!ent.hovered&&vis)?'1':'0';
   });
 }
 
@@ -451,14 +463,15 @@ window.addEventListener('message', ev => {
     if (!simPatients.has(p.id)) {
       const per = buildPerson(col);
       per.g.position.set(tx, 0, tz); per.g.userData = { etype: 'patient', eid: p.id }; scene.add(per.g);
-      simPatients.set(p.id, { ...per, el: makeEntLabel(fname, status, col, sub), tx, tz, cx: tx, cz: tz, ph: Math.random() * 6.28 });
+      simPatients.set(p.id, { ...per, el: makeEntLabel(fname, status, col, sub), nel: makeNameLabel(fname, col), tx, tz, cx: tx, cz: tz, ph: Math.random() * 6.28, hovered: false });
     } else {
       const e = simPatients.get(p.id);
       e.tx = tx; e.tz = tz; e.bm.color.setHex(col);
+      e.nel.style.color='#'+col.toString(16).padStart(6,'0'); e.nel.textContent=fname;
       refreshEntLabel(e.el, fname, status, col, sub);
     }
   });
-  simPatients.forEach((e, id) => { if (!pIds.has(id)) { scene.remove(e.g); e.el.remove(); simPatients.delete(id); } });
+  simPatients.forEach((e, id) => { if (!pIds.has(id)) { scene.remove(e.g); e.el.remove(); e.nel.remove(); simPatients.delete(id); } });
 
   // Doctors
   const dIds = new Set();
@@ -474,10 +487,11 @@ window.addEventListener('message', ev => {
     if (!simDoctors.has(d.id)) {
       const per = buildPerson(col);
       per.g.position.set(tx, 0, tz); per.g.userData = { etype: 'doctor', eid: d.id }; scene.add(per.g);
-      simDoctors.set(d.id, { ...per, el: makeEntLabel(dname, status, col, sub), tx, tz, cx: tx, cz: tz, ph: Math.random() * 6.28 });
+      simDoctors.set(d.id, { ...per, el: makeEntLabel(dname, status, col, sub), nel: makeNameLabel(dname, col), tx, tz, cx: tx, cz: tz, ph: Math.random() * 6.28, hovered: false });
     } else {
       const e = simDoctors.get(d.id);
       e.tx = tx; e.tz = tz; e.bm.color.setHex(col);
+      e.nel.style.color='#'+col.toString(16).padStart(6,'0'); e.nel.textContent=dname;
       refreshEntLabel(e.el, dname, status, col, sub);
     }
   });
@@ -490,7 +504,7 @@ window.addEventListener('message', ev => {
         e.tx = bx; e.tz = bz;
         e.bm.color.setHex(0x9e9e9e);
       } else {
-        scene.remove(e.g); e.el.remove(); simDoctors.delete(id);
+        scene.remove(e.g); e.el.remove(); e.nel.remove(); simDoctors.delete(id);
       }
     }
   });
@@ -566,11 +580,11 @@ dom.addEventListener('click', e => {
   if (nid !== hovId || ntype !== hovType) {
     if (hovId !== null) {
       const oe = hovType==='patient' ? simPatients.get(hovId) : simDoctors.get(hovId);
-      if (oe) { oe.g.scale.set(1,1,1); oe.el.style.boxShadow=''; oe.el.style.zIndex=''; }
+      if (oe) { oe.g.scale.set(1,1,1); oe.el.style.boxShadow=''; oe.el.style.zIndex=''; oe.hovered=false; }
     }
     if (nid !== null) {
       const ne = ntype==='patient' ? simPatients.get(nid) : simDoctors.get(nid);
-      if (ne) { ne.g.scale.set(1.3,1.3,1.3); ne.el.style.boxShadow='0 3px 14px rgba(0,0,0,.4)'; ne.el.style.zIndex='200'; }
+      if (ne) { ne.g.scale.set(1.3,1.3,1.3); ne.el.style.boxShadow='0 3px 14px rgba(0,0,0,.4)'; ne.el.style.zIndex='200'; ne.hovered=true; }
     }
     hovId=nid; hovType=ntype;
     if (!down) dom.style.cursor = nid!==null ? 'pointer' : '';
