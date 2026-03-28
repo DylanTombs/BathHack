@@ -218,6 +218,28 @@ async def _handle_command(
             "tick": engine.current_tick,
         })
 
+    elif command == "add_bed":
+        ward = msg.get("ward", "general_ward")
+        count = int(msg.get("count", 1))
+        engine.add_bed(ward, count)
+        await manager.send_to(ws, {
+            "type": "command_ack",
+            "command": "add_bed",
+            "is_running": engine.is_running,
+            "tick": engine.current_tick,
+        })
+
+    elif command == "remove_bed":
+        ward = msg.get("ward", "general_ward")
+        count = int(msg.get("count", 1))
+        engine.remove_bed(ward, count)
+        await manager.send_to(ws, {
+            "type": "command_ack",
+            "command": "remove_bed",
+            "is_running": engine.is_running,
+            "tick": engine.current_tick,
+        })
+
     elif command == "remove_doctor":
         engine.remove_doctor()
         await manager.send_to(ws, {

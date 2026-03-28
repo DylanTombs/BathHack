@@ -10,12 +10,13 @@ export const ControlPanel: React.FC = () => {
     scenario,
     connected,
     doctors,
+    wards,
     arrivalRate: storeArrivalRate,
     tickSpeedSeconds,
     surgeTicks,
     shortageTicks,
   } = useSimulationStore();
-  const { startSim, pauseSim, resetSim, triggerSurge, triggerShortage, triggerRecovery, updateConfig, addDoctor, removeDoctor } = useWebSocket();
+  const { startSim, pauseSim, resetSim, triggerSurge, triggerShortage, triggerRecovery, updateConfig, addDoctor, removeDoctor, addBed, removeBed } = useWebSocket();
   const [arrivalRate, setArrivalRate] = useState(1.5);
   const [tickSpeedMultiplier, setTickSpeedMultiplier] = useState(1.0);
 
@@ -32,6 +33,7 @@ export const ControlPanel: React.FC = () => {
     }
   }, [tickSpeedSeconds]);
   const [selectedSpecialty, setSelectedSpecialty] = useState('General');
+  const [selectedWard, setSelectedWard] = useState<'general_ward' | 'icu'>('general_ward');
   const [pending, setPending] = useState(false);
 
   const handleStartPause = useCallback(() => {
@@ -181,6 +183,42 @@ export const ControlPanel: React.FC = () => {
                 disabled={!connected || doctors.length <= 1}
                 className="px-3 py-1.5 rounded-lg text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
                 title="Remove last doctor"
+              >
+                −
+              </button>
+            </div>
+          </div>
+
+          {/* Beds + with ward dropdown */}
+          <div>
+            <div className="flex justify-between text-xs text-gray-600 mb-1">
+              <span>Beds</span>
+              <span className="font-mono">
+                GW {wards['general_ward']?.capacity ?? '--'} / ICU {wards['icu']?.capacity ?? '--'}
+              </span>
+            </div>
+            <div className="flex gap-2 items-center">
+              <select
+                value={selectedWard}
+                onChange={e => setSelectedWard(e.target.value as 'general_ward' | 'icu')}
+                className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-blue-400"
+              >
+                <option value="general_ward">General Ward</option>
+                <option value="icu">ICU</option>
+              </select>
+              <button
+                onClick={() => addBed(selectedWard)}
+                disabled={!connected}
+                className="px-3 py-1.5 rounded-lg text-sm font-bold bg-blue-100 text-blue-700 hover:bg-blue-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title={`Add bed to ${selectedWard === 'general_ward' ? 'General Ward' : 'ICU'}`}
+              >
+                +
+              </button>
+              <button
+                onClick={() => removeBed(selectedWard)}
+                disabled={!connected || (selectedWard === 'general_ward' ? (wards['general_ward']?.capacity ?? 1) <= 1 : (wards['icu']?.capacity ?? 1) <= 1)}
+                className="px-3 py-1.5 rounded-lg text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title={`Remove bed from ${selectedWard === 'general_ward' ? 'General Ward' : 'ICU'}`}
               >
                 −
               </button>
