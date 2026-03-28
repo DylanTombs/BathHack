@@ -61,6 +61,27 @@ METRICS_HISTORY_BUFFER = 100
 # Severity distribution during a surge (overrides normal 60/30/10)
 _SURGE_SEVERITY_WEIGHTS = [("low", 0.20), ("medium", 0.30), ("critical", 0.50)]
 
+# Simulated calendar — tick 0 = Monday 06:00, each tick = 1 simulated hour
+_SIM_START_DAY = 0   # 0=Monday
+_SIM_START_HOUR = 6  # 06:00
+_DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+
+
+def _sim_datetime(tick: int) -> str:
+    """Return a human-readable simulated datetime string for a given tick."""
+    total_hours = _SIM_START_HOUR + tick
+    hour = total_hours % 24
+    day = (_SIM_START_DAY + total_hours // 24) % 7
+    return f"{_DAY_NAMES[day]} {hour:02d}:00"
+
+
+def _sim_hour_day(tick: int) -> tuple[int, int, str]:
+    """Return (hour_of_day, day_of_week, day_name) for a given tick."""
+    total_hours = _SIM_START_HOUR + tick
+    hour = total_hours % 24
+    day = (_SIM_START_DAY + total_hours // 24) % 7
+    return hour, day, _DAY_NAMES[day]
+
 
 class SimulationEngine:
     """
@@ -393,9 +414,6 @@ class SimulationEngine:
         rate = self._arrival_rate * self._surge_arrival_multiplier
         poisson_count = _poisson_draw(rate)
 
-        _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday",
-                      "Friday", "Saturday", "Sunday"]
-
         def _fallback_specs() -> list[PatientSpec]:
             specs = []
             for _ in range(poisson_count):
@@ -415,13 +433,12 @@ class SimulationEngine:
             specs = _fallback_specs()
         else:
             metrics = self.get_metrics()
-            hour = self._tick % 24
-            day = (self._tick // 24) % 7
+            hour, day, day_name = _sim_hour_day(self._tick)
             ctx = ArrivalContext(
                 tick=self._tick,
                 hour_of_day=hour,
                 day_of_week=day,
-                day_name=_DAY_NAMES[day],
+                day_name=day_name,
                 scenario=self._scenario,
                 surge_active=self._surge_ticks_remaining > 0,
                 current_queue_length=metrics.current_queue_length,
@@ -629,6 +646,7 @@ class SimulationEngine:
         return SimulationState(
             tick=self._tick,
             timestamp=time.time(),
+            sim_datetime=_sim_datetime(self._tick),
             patients=[pa.patient for pa in self.patients.values()],
             doctors=[da.doctor for da in self.doctors],
             beds=beds,

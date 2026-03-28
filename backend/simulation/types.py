@@ -122,6 +122,7 @@ class SimEvent:
 class SimulationState:
     tick: int
     timestamp: float                        # unix time
+    sim_datetime: str                       # e.g. "Monday 14:00" — simulated in-world time
     patients: list[Patient]
     doctors: list[Doctor]
     beds: list[Bed]

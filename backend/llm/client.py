@@ -255,7 +255,7 @@ class OpenRouterLLMClient:
             logger.warning("LLM generated %d patients — capping at 20", len(specs))
             specs = specs[:20]
 
-        logger.debug("LLM generated %d patient(s) for tick %d", len(specs), context.tick)
+        logger.debug("LLM generated %d patient(s)", len(specs))
         return specs
 
     # ── Internal: API call layer ──────────────────────────────────────────────

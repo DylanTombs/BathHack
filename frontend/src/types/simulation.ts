@@ -84,6 +84,7 @@ export interface SimulationState {
   type: 'sim_state';
   tick: number;
   timestamp: number;
+  sim_datetime: string;
   scenario: string;
   is_running: boolean;
   patients: Patient[];
