@@ -355,11 +355,13 @@ const D_ZONE = {
 
 function sevCol(s){return s==='critical'?0xef4444:s==='medium'?0xf59e0b:0x4ade80}
 function wrkCol(w){return w==='overwhelmed'?0xdc2626:w==='heavy'?0xf97316:w==='moderate'?0x8b5cf6:0x3b82f6}
+const SKIN_TONES=[0xfddbb4,0xf1c27d,0xe0ac69,0xc68642,0x8d5524,0x4a2512,0xffcba4,0xd4956a];
+function skinTone(id){return SKIN_TONES[Math.abs(id*7+3)%SKIN_TONES.length];}
 function slotPos(id,zone,zmap){const p=zmap[zone]||zmap[Object.keys(zmap)[0]];return p[Math.abs(id)%p.length]}
 function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):''}
 
-function buildPerson(col){
-  const g=new T.Group(), bm=new T.MeshLambertMaterial({color:col}), sm=new T.MeshLambertMaterial({color:0xffccbc});
+function buildPerson(col,skinCol=0xfddbb4){
+  const g=new T.Group(), bm=new T.MeshLambertMaterial({color:col}), sm=new T.MeshLambertMaterial({color:skinCol});
   const lpL=new T.Group(); lpL.position.set(-0.13,0.7,0); g.add(lpL);
   const lpR=new T.Group(); lpR.position.set( 0.13,0.7,0); g.add(lpR);
   [lpL,lpR].forEach(lp=>{const m=new T.Mesh(new T.BoxGeometry(0.15,0.7,0.15),bm);m.position.y=-0.35;lp.add(m);});
@@ -419,10 +421,10 @@ function animSimEnts(map){
 
 // ── animated people ───────────────────────────────────────────────────────────
 const people = [];
-function makePerson(bodyCol, waypoints, speed) {
+function makePerson(bodyCol, waypoints, speed, skinCol=0xfddbb4) {
   const g = new T.Group();
   const bm = new T.MeshLambertMaterial({ color: bodyCol });
-  const sm = new T.MeshLambertMaterial({ color: 0xffccbc });
+  const sm = new T.MeshLambertMaterial({ color: skinCol });
   const lpL = new T.Group(); lpL.position.set(-0.13, 0.7, 0); g.add(lpL);
   const lpR = new T.Group(); lpR.position.set( 0.13, 0.7, 0); g.add(lpR);
   const legL = new T.Mesh(new T.BoxGeometry(0.15,0.7,0.15),bm); legL.position.y=-0.35; lpL.add(legL);
@@ -441,8 +443,8 @@ function makePerson(bodyCol, waypoints, speed) {
 }
 
 // Ambient nurses (background atmosphere only — real agents populated from sim state)
-makePerson(0xfafafa, [[-2,9],[2,9],[2,12],[-2,12]], 0.013);
-makePerson(0xfafafa, [[-12,-2],[12,-2],[12,2],[-12,2]], 0.017);
+makePerson(0xfafafa, [[-2,9],[2,9],[2,12],[-2,12]], 0.013, 0xc68642);
+makePerson(0xfafafa, [[-12,-2],[12,-2],[12,2],[-12,2]], 0.017, 0xf1c27d);
 
 // ── Real-time simulation state (postMessage from React) ──────────────────────
 window.addEventListener('message', ev => {
@@ -461,7 +463,7 @@ window.addEventListener('message', ev => {
     const sub = p.diagnosis || cap(p.condition);
     const fname = p.name ? p.name.split(' ')[0] : ('P' + p.id);
     if (!simPatients.has(p.id)) {
-      const per = buildPerson(col);
+      const per = buildPerson(col, skinTone(p.id));
       per.g.position.set(tx, 0, tz); per.g.userData = { etype: 'patient', eid: p.id }; scene.add(per.g);
       simPatients.set(p.id, { ...per, el: makeEntLabel(fname, status, col, sub), nel: makeNameLabel(fname, col), tx, tz, cx: tx, cz: tz, ph: Math.random() * 6.28, hovered: false });
     } else {
@@ -485,7 +487,7 @@ window.addEventListener('message', ev => {
     const sub = d.specialty + ' · ' + pts + '/' + cap2 + ' pts';
     const dname = d.name || ('Doc ' + d.id);
     if (!simDoctors.has(d.id)) {
-      const per = buildPerson(col);
+      const per = buildPerson(col, skinTone(d.id));
       per.g.position.set(tx, 0, tz); per.g.userData = { etype: 'doctor', eid: d.id }; scene.add(per.g);
       simDoctors.set(d.id, { ...per, el: makeEntLabel(dname, status, col, sub), nel: makeNameLabel(dname, col), tx, tz, cx: tx, cz: tz, ph: Math.random() * 6.28, hovered: false });
     } else {

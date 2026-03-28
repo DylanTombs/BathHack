@@ -4,7 +4,7 @@
 <meta charset="utf-8">
 <title>Hospital 3D</title>
 <style>
-*{margin:0;padding:0}canvas{display:block}
+*{margin:0;padding:0}canvas{display:block}body{overflow:hidden}
 #hud{position:fixed;top:0;left:0;right:0;padding:10px 20px;background:rgba(255,255,255,.9);backdrop-filter:blur(6px);display:flex;align-items:center;gap:12px;border-bottom:2px solid #e53935;z-index:10}
 #hud span{font:bold 18px sans-serif;color:#c62828;letter-spacing:1px}
 #hud small{font:12px sans-serif;color:#666}
@@ -335,6 +335,11 @@ const labs = [
 // ── Simulation entity system ──────────────────────────────────────────────────
 const simPatients = new Map(); // id → {g, bm, lpL, lpR, apL, apR, el, tx, tz, cx, cz, ph}
 const simDoctors  = new Map();
+let currentShortageTicks = 0;
+function benchSlot(id) {
+  const slots = [[-34,8],[-26,8],[-18,8],[-34,14],[-26,14],[-18,14],[-34,20],[-26,20]];
+  return slots[id % slots.length];
+}
 
 const P_ZONE = {
   waiting:      [[-5,14],[0,14],[5,14],[-4,17],[0,17],[4,17],[-3,12],[0,12],[3,12],[-3,19],[0,19],[3,19],[-5,16],[5,16],[0,18]],
@@ -344,17 +349,19 @@ const P_ZONE = {
 };
 const D_ZONE = {
   waiting:      [[-3,6],[0,6],[3,6],[-3,8],[0,8],[3,8]],
-  general_ward: [[-35,1],[-30,1],[-22,1],[-17,1],[-35,-1],[-30,-1],[-22,-1],[-17,-1]],
-  icu:          [[17,1],[23,1],[29,1],[35,1],[17,-1],[23,-1],[29,-1],[35,-1]],
+  general_ward: [[-35,-6],[-30,-6],[-22,-6],[-17,-6],[-35,-14],[-30,-14],[-22,-14],[-17,-14]],
+  icu:          [[17,-6],[23,-6],[29,-6],[35,-6],[17,-14],[23,-14],[29,-14],[35,-14]],
 };
 
 function sevCol(s){return s==='critical'?0xef4444:s==='medium'?0xf59e0b:0x4ade80}
 function wrkCol(w){return w==='overwhelmed'?0xdc2626:w==='heavy'?0xf97316:w==='moderate'?0x8b5cf6:0x3b82f6}
+const SKIN_TONES=[0xfddbb4,0xf1c27d,0xe0ac69,0xc68642,0x8d5524,0x4a2512,0xffcba4,0xd4956a];
+function skinTone(id){return SKIN_TONES[Math.abs(id*7+3)%SKIN_TONES.length];}
 function slotPos(id,zone,zmap){const p=zmap[zone]||zmap[Object.keys(zmap)[0]];return p[Math.abs(id)%p.length]}
 function cap(s){return s?s.charAt(0).toUpperCase()+s.slice(1):''}
 
-function buildPerson(col){
-  const g=new T.Group(), bm=new T.MeshLambertMaterial({color:col}), sm=new T.MeshLambertMaterial({color:0xffccbc});
+function buildPerson(col,skinCol=0xfddbb4){
+  const g=new T.Group(), bm=new T.MeshLambertMaterial({color:col}), sm=new T.MeshLambertMaterial({color:skinCol});
   const lpL=new T.Group(); lpL.position.set(-0.13,0.7,0); g.add(lpL);
   const lpR=new T.Group(); lpR.position.set( 0.13,0.7,0); g.add(lpR);
   [lpL,lpR].forEach(lp=>{const m=new T.Mesh(new T.BoxGeometry(0.15,0.7,0.15),bm);m.position.y=-0.35;lp.add(m);});
@@ -377,6 +384,14 @@ function makeEntLabel(name,status,col,sub){
   labDiv.appendChild(el);
   return el;
 }
+function makeNameLabel(name,col){
+  const hex='#'+col.toString(16).padStart(6,'0');
+  const el=document.createElement('div');
+  el.style.cssText='position:absolute;font:bold 10px sans-serif;color:'+hex+';text-shadow:0 1px 2px rgba(0,0,0,.7);white-space:nowrap;pointer-events:none;transition:opacity .15s;';
+  el.textContent=name;
+  labDiv.appendChild(el);
+  return el;
+}
 function refreshEntLabel(el,name,status,col,sub){
   const hex='#'+col.toString(16).padStart(6,'0');
   el.style.borderLeftColor=hex;
@@ -395,17 +410,21 @@ function animSimEnts(map){
     ent.g.position.set(ent.cx, mv?Math.abs(Math.sin(ent.ph))*0.04:0, ent.cz);
     if(mv) ent.g.rotation.y=Math.atan2(ddx,ddz);
     const lp=new T.Vector3(ent.cx,2.1,ent.cz).project(cam);
-    ent.el.style.transform='translate(-50%,-50%) translate('+((lp.x+1)/2*W)+'px,'+((-lp.y+1)/2*H)+'px)';
-    ent.el.style.opacity=lp.z<1?'1':'0';
+    const px=((lp.x+1)/2*W)+'px', py=((-lp.y+1)/2*H)+'px';
+    const vis=lp.z<1;
+    ent.el.style.transform='translate(-50%,-50%) translate('+px+','+py+')';
+    ent.el.style.opacity=(ent.hovered&&vis)?'1':'0';
+    ent.nel.style.transform='translate(-50%,-100%) translate('+px+','+py+')';
+    ent.nel.style.opacity=(!ent.hovered&&vis)?'1':'0';
   });
 }
 
 // ── animated people ───────────────────────────────────────────────────────────
 const people = [];
-function makePerson(bodyCol, waypoints, speed) {
+function makePerson(bodyCol, waypoints, speed, skinCol=0xfddbb4) {
   const g = new T.Group();
   const bm = new T.MeshLambertMaterial({ color: bodyCol });
-  const sm = new T.MeshLambertMaterial({ color: 0xffccbc });
+  const sm = new T.MeshLambertMaterial({ color: skinCol });
   const lpL = new T.Group(); lpL.position.set(-0.13, 0.7, 0); g.add(lpL);
   const lpR = new T.Group(); lpR.position.set( 0.13, 0.7, 0); g.add(lpR);
   const legL = new T.Mesh(new T.BoxGeometry(0.15,0.7,0.15),bm); legL.position.y=-0.35; lpL.add(legL);
@@ -424,8 +443,8 @@ function makePerson(bodyCol, waypoints, speed) {
 }
 
 // Ambient nurses (background atmosphere only — real agents populated from sim state)
-makePerson(0xfafafa, [[-2,9],[2,9],[2,12],[-2,12]], 0.013);
-makePerson(0xfafafa, [[-12,-2],[12,-2],[12,2],[-12,2]], 0.017);
+makePerson(0xfafafa, [[-2,9],[2,9],[2,12],[-2,12]], 0.013, 0xc68642);
+makePerson(0xfafafa, [[-12,-2],[12,-2],[12,2],[-12,2]], 0.017, 0xf1c27d);
 
 // ── Real-time simulation state (postMessage from React) ──────────────────────
 window.addEventListener('message', ev => {
@@ -444,16 +463,17 @@ window.addEventListener('message', ev => {
     const sub = p.diagnosis || cap(p.condition);
     const fname = p.name ? p.name.split(' ')[0] : ('P' + p.id);
     if (!simPatients.has(p.id)) {
-      const per = buildPerson(col);
+      const per = buildPerson(col, skinTone(p.id));
       per.g.position.set(tx, 0, tz); per.g.userData = { etype: 'patient', eid: p.id }; scene.add(per.g);
-      simPatients.set(p.id, { ...per, el: makeEntLabel(fname, status, col, sub), tx, tz, cx: tx, cz: tz, ph: Math.random() * 6.28 });
+      simPatients.set(p.id, { ...per, el: makeEntLabel(fname, status, col, sub), nel: makeNameLabel(fname, col), tx, tz, cx: tx, cz: tz, ph: Math.random() * 6.28, hovered: false });
     } else {
       const e = simPatients.get(p.id);
       e.tx = tx; e.tz = tz; e.bm.color.setHex(col);
+      e.nel.style.color='#'+col.toString(16).padStart(6,'0'); e.nel.textContent=fname;
       refreshEntLabel(e.el, fname, status, col, sub);
     }
   });
-  simPatients.forEach((e, id) => { if (!pIds.has(id)) { scene.remove(e.g); e.el.remove(); simPatients.delete(id); } });
+  simPatients.forEach((e, id) => { if (!pIds.has(id)) { scene.remove(e.g); e.el.remove(); e.nel.remove(); simPatients.delete(id); } });
 
   // Doctors
   const dIds = new Set();
@@ -467,16 +487,29 @@ window.addEventListener('message', ev => {
     const sub = d.specialty + ' · ' + pts + '/' + cap2 + ' pts';
     const dname = d.name || ('Doc ' + d.id);
     if (!simDoctors.has(d.id)) {
-      const per = buildPerson(col);
+      const per = buildPerson(col, skinTone(d.id));
       per.g.position.set(tx, 0, tz); per.g.userData = { etype: 'doctor', eid: d.id }; scene.add(per.g);
-      simDoctors.set(d.id, { ...per, el: makeEntLabel(dname, status, col, sub), tx, tz, cx: tx, cz: tz, ph: Math.random() * 6.28 });
+      simDoctors.set(d.id, { ...per, el: makeEntLabel(dname, status, col, sub), nel: makeNameLabel(dname, col), tx, tz, cx: tx, cz: tz, ph: Math.random() * 6.28, hovered: false });
     } else {
       const e = simDoctors.get(d.id);
       e.tx = tx; e.tz = tz; e.bm.color.setHex(col);
+      e.nel.style.color='#'+col.toString(16).padStart(6,'0'); e.nel.textContent=dname;
       refreshEntLabel(e.el, dname, status, col, sub);
     }
   });
-  simDoctors.forEach((e, id) => { if (!dIds.has(id)) { scene.remove(e.g); e.el.remove(); simDoctors.delete(id); } });
+  currentShortageTicks = msg.shortageTicks || 0;
+  simDoctors.forEach((e, id) => {
+    if (!dIds.has(id)) {
+      if (currentShortageTicks > 0) {
+        // Benched — walk to staff room
+        const [bx, bz] = benchSlot(id);
+        e.tx = bx; e.tz = bz;
+        e.bm.color.setHex(0x9e9e9e);
+      } else {
+        scene.remove(e.g); e.el.remove(); e.nel.remove(); simDoctors.delete(id);
+      }
+    }
+  });
 });
 
 // ── orbit ─────────────────────────────────────────────────────────────────────
@@ -549,11 +582,11 @@ dom.addEventListener('click', e => {
   if (nid !== hovId || ntype !== hovType) {
     if (hovId !== null) {
       const oe = hovType==='patient' ? simPatients.get(hovId) : simDoctors.get(hovId);
-      if (oe) { oe.g.scale.set(1,1,1); oe.el.style.boxShadow=''; oe.el.style.zIndex=''; }
+      if (oe) { oe.g.scale.set(1,1,1); oe.el.style.boxShadow=''; oe.el.style.zIndex=''; oe.hovered=false; }
     }
     if (nid !== null) {
       const ne = ntype==='patient' ? simPatients.get(nid) : simDoctors.get(nid);
-      if (ne) { ne.g.scale.set(1.3,1.3,1.3); ne.el.style.boxShadow='0 3px 14px rgba(0,0,0,.4)'; ne.el.style.zIndex='200'; }
+      if (ne) { ne.g.scale.set(1.3,1.3,1.3); ne.el.style.boxShadow='0 3px 14px rgba(0,0,0,.4)'; ne.el.style.zIndex='200'; ne.hovered=true; }
     }
     hovId=nid; hovType=ntype;
     if (!down) dom.style.cursor = nid!==null ? 'pointer' : '';
