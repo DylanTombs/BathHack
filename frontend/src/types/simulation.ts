@@ -103,6 +103,7 @@ export interface SimulationState {
   arrival_rate: number;
   surge_ticks_remaining: number;
   shortage_ticks_remaining: number;
+  tick_speed_seconds?: number;
 }
 
 export interface ExplanationResponse {

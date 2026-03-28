@@ -142,6 +142,7 @@ class SimulationState:
     arrival_rate: float                     # current base arrival rate (for UI sync)
     surge_ticks_remaining: int              # 0 when not active
     shortage_ticks_remaining: int           # 0 when not active
+    tick_speed_seconds: float = 1.0         # real seconds per sim tick
 
 # ─── Control Messages (frontend → backend) ────────────────────────────────────
 

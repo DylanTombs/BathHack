@@ -72,8 +72,9 @@ _TREATMENT_TICKS: dict[str, tuple[int, int]] = {
     "low": (1, 4),
 }
 
-# Severity arrival distribution: 60% low, 30% medium, 10% critical
-_SEVERITY_WEIGHTS = [("low", 0.60), ("medium", 0.30), ("critical", 0.10)]
+# Severity arrival distribution (realistic baseline A&E mix):
+# low ~72%, medium ~24%, critical ~4%
+_SEVERITY_WEIGHTS = [("low", 0.72), ("medium", 0.24), ("critical", 0.04)]
 
 
 def _make_random_spec(force_severity: Optional[Severity] = None) -> PatientSpec:

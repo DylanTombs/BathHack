@@ -206,12 +206,13 @@ class OpenRouterLLMClient:
         )
         if raw is None:
             return fallback_fn()
-        return self._parse_patient_batch(raw, fallback_fn)
+        return self._parse_patient_batch(raw, fallback_fn, context)
 
     def _parse_patient_batch(
         self,
         raw: str,
         fallback_fn: Callable[[], list[PatientSpec]],
+        context: ArrivalContext,
     ) -> list[PatientSpec]:
         """
         Parse LLM JSON array response into a list of PatientSpec.
@@ -256,7 +257,56 @@ class OpenRouterLLMClient:
             logger.warning("LLM generated %d patients — capping at 20", len(specs))
             specs = specs[:20]
 
+        specs = self._normalize_arrival_severity_mix(specs, context)
+
         logger.debug("LLM generated %d patient(s)", len(specs))
+        return specs
+
+    def _normalize_arrival_severity_mix(
+        self,
+        specs: list[PatientSpec],
+        context: ArrivalContext,
+    ) -> list[PatientSpec]:
+        """
+        Apply a realism guard to LLM-generated severity mix.
+
+        - Normal operation: cap critical share at 10%
+        - Surge operation: cap critical share at 25%
+
+        Excess critical entries are downgraded to medium so the simulation
+        remains plausible while preserving patient count and identities.
+        """
+        if not specs:
+            return specs
+
+        max_critical_share = 0.25 if context.surge_active else 0.10
+        max_critical = int(len(specs) * max_critical_share)
+
+        # Guarantee at least one critical only for larger batches.
+        if context.surge_active and len(specs) >= 4:
+            max_critical = max(1, max_critical)
+        elif not context.surge_active and len(specs) >= 10:
+            max_critical = max(1, max_critical)
+
+        critical_indices = [
+            i for i, spec in enumerate(specs)
+            if spec.severity == "critical"
+        ]
+
+        overflow = len(critical_indices) - max_critical
+        if overflow <= 0:
+            return specs
+
+        # Downgrade overflow criticals at the tail to preserve earlier items.
+        for idx in reversed(critical_indices[-overflow:]):
+            specs[idx].severity = "medium"
+
+        logger.info(
+            "Normalized LLM arrival severity mix: critical %d -> %d (surge=%s)",
+            len(critical_indices),
+            max_critical,
+            context.surge_active,
+        )
         return specs
 
     # ── Internal: API call layer ──────────────────────────────────────────────

@@ -315,7 +315,9 @@ REAL-WORLD A&E ARRIVAL PATTERNS — use these to decide count and patient types:
 - 17:00–22:00: 3–5 patients (post-work accidents, sports injuries, DIY injuries)
 - Friday/Saturday 22:00–03:00: 4–6 patients (high trauma, assault, alcohol, overdose)
 - Monday morning: elevated cardiac events, stress-related presentations
-- Surge active: generate more patients, skew heavily toward critical severity
+- Severity realism target (normal operation): mostly low/moderate acuity;
+    critical presentations should be uncommon (~3-8% of arrivals, not every tick)
+- Surge active: generate more patients and increase acuity, but avoid making most arrivals critical
 
 Generate a realistic batch of patients arriving RIGHT NOW at this A&E (0 to {max_count} patients).
 Each patient must be a coherent person — realistic full name, age appropriate for diagnosis, specific clinical diagnosis, and a brief backstory explaining why they are here today.

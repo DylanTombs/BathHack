@@ -61,8 +61,8 @@ METRICS_HISTORY_BUFFER = 100
 # Severity rank for priority resolution
 _SEVERITY_RANK = {"critical": 2, "medium": 1, "low": 0}
 
-# Severity distribution during a surge (overrides normal 60/30/10)
-_SURGE_SEVERITY_WEIGHTS = [("low", 0.20), ("medium", 0.30), ("critical", 0.50)]
+# Severity distribution during a surge (still elevated acuity, but realistic)
+_SURGE_SEVERITY_WEIGHTS = [("low", 0.45), ("medium", 0.35), ("critical", 0.20)]
 
 # Simulated calendar — tick 0 = Monday 06:00, each tick = 15 simulated minutes
 _SIM_START_DAY = 0    # 0=Monday
@@ -799,6 +799,7 @@ class SimulationEngine:
             arrival_rate=self._arrival_rate,
             surge_ticks_remaining=self._surge_ticks_remaining,
             shortage_ticks_remaining=self._shortage_ticks_remaining,
+            tick_speed_seconds=self.config.tick_interval_seconds,
         )
 
 
