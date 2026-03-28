@@ -203,6 +203,9 @@ class SimulationEngine:
         # ── Step 4: Resolve pending destinations + auto-route ─────────────
         self._resolve_pending_destinations()
 
+        # ── Step 4b: Escalate critical patients to ICU when space opens ───
+        self._escalate_critical_to_icu()
+
         # ── Step 5: Discharge completed patients ──────────────────────────
         self._discharge_patients()
 
@@ -549,7 +552,7 @@ class SimulationEngine:
                 if pa.patient.assigned_doctor_id is not None:
                     self.queue.remove(pa.patient.id)
 
-            # Process routing actions immediately so other doctors don't re-route
+            # Process routing actions immediately — assign beds NOW so capacity is accurate
             for pa in list(self.patients.values()):
                 action = getattr(pa, "_pending_route_action", None)
                 if action is None:
@@ -567,48 +570,131 @@ class SimulationEngine:
                 if action == "discharge":
                     self._move_to_discharge(pa, stay or 2, dis_sev, dis_cond)
                 else:
-                    # Apply triage's treatment estimate before routing
                     if treatment_ticks is not None:
                         pa.patient.treatment_duration_ticks = treatment_ticks
-                    pa.patient.pending_destination = action
+                    orig_location = pa.patient.location
+                    dest = action
+                    if orig_location in ("general_ward", "icu"):
+                        # Ward-to-ward transfer: free old bed FIRST to avoid map overwrite bug
+                        if dest == "icu" and self.hospital.free_beds_in("icu") == 0:
+                            dest = "general_ward"
+                        if self.hospital.free_beds_in(dest) > 0:
+                            self.hospital.free_bed(pa.patient.id)
+                            for da in self.doctors:
+                                if pa.patient.id in da.doctor.assigned_patient_ids:
+                                    da.doctor.assigned_patient_ids.remove(pa.patient.id)
+                                    da._update_workload()
+                                    break
+                            pa.patient.assigned_doctor_id = None
+                            pa.patient.treatment_started_tick = None
+                            bed = self.hospital.assign_bed(pa.patient.id, dest)
+                            if bed:
+                                pa.patient.location = dest
+                                pa.patient.grid_x = bed.grid_x
+                                pa.patient.grid_y = bed.grid_y
+                                pa.patient.pending_destination = None
+                                self.queue.push(pa)
+                            else:
+                                pa.patient.pending_destination = action
+                                self.queue.push(pa)
+                        else:
+                            pa.patient.pending_destination = action
+                            self.queue.push(pa)
+                    else:
+                        # From waiting: assign bed directly
+                        bed = self.hospital.assign_bed(pa.patient.id, dest)
+                        if bed is None and dest == "icu":
+                            # ICU full — fall back to general_ward
+                            dest = "general_ward"
+                            bed = self.hospital.assign_bed(pa.patient.id, dest)
+                        if bed is not None:
+                            self.hospital.release_waiting_slot(pa.patient.id)
+                            pa.patient.location = dest
+                            pa.patient.grid_x = bed.grid_x
+                            pa.patient.grid_y = bed.grid_y
+                            pa.patient.pending_destination = None
+                            self.queue.push(pa)  # re-add so ward doctors can treat them
+                        else:
+                            # Both wards full — keep visible in queue with pending dest for retry
+                            pa.patient.pending_destination = action
+                            self.queue.push(pa)
 
         return events
 
     def _resolve_pending_destinations(self) -> None:
         """
-        Assign beds to patients routed by Triage doctors (pending_destination set).
-        Sorted by severity so critical patients get beds first.
-        Patients with no pending_destination stay in waiting until a Triage doctor sees them.
+        Retry bed assignment for patients who still have a pending_destination because
+        both wards were full when routing was first processed.
+        Falls back from ICU to general_ward if ICU is still full.
+        Patients who still can't get a bed remain in the queue for the next tick.
         """
         pending = sorted(
-            [pa for pa in self.patients.values() if pa.patient.pending_destination],
+            [pa for pa in self.patients.values()
+             if pa.patient.pending_destination and pa.patient.location == "waiting"],
             key=lambda pa: -_SEVERITY_RANK[pa.patient.severity],
         )
-
         for pa in pending:
             p = pa.patient
             dest = p.pending_destination
             bed = self.hospital.assign_bed(p.id, dest)
-            if bed:
-                # Free the old slot before moving
-                if p.location in ("general_ward", "icu"):
-                    self.hospital.free_bed(p.id)
-                    # Clear old doctor assignment so ward doctor can pick them up fresh
-                    for da in self.doctors:
-                        if p.id in da.doctor.assigned_patient_ids:
-                            da.doctor.assigned_patient_ids.remove(p.id)
-                            da._update_workload()
-                            break
-                    p.assigned_doctor_id = None
-                    p.treatment_started_tick = None
-                elif p.location == "waiting":
-                    self.hospital.release_waiting_slot(p.id)
+            if bed is None and dest == "icu":
+                dest = "general_ward"
+                bed = self.hospital.assign_bed(p.id, dest)
+            if bed is not None:
+                self.hospital.release_waiting_slot(p.id)
                 p.location = dest
                 p.grid_x = bed.grid_x
                 p.grid_y = bed.grid_y
                 p.pending_destination = None
-                # Re-add to queue so ward doctors can treat them next tick
                 self.queue.push(pa)
+            # If still no bed: patient stays in queue with pending_destination for next tick
+
+    def _escalate_critical_to_icu(self) -> None:
+        """
+        Escalate critical patients sitting in general_ward to ICU when space opens up.
+        Called every tick after _resolve_pending_destinations.
+        Oldest critical patients are escalated first (FIFO within severity).
+        """
+        if self.hospital.is_ward_full("icu"):
+            return
+        critical_in_gw = sorted(
+            [pa for pa in self.patients.values()
+             if pa.patient.location == "general_ward"
+             and pa.patient.severity == "critical"
+             and pa.patient.pending_destination is None],
+            key=lambda pa: pa.patient.arrived_at_tick,
+        )
+        for pa in critical_in_gw:
+            if self.hospital.free_beds_in("icu") == 0:
+                break
+            # Free general bed first to avoid bed-map overwrite bug
+            self.hospital.free_bed(pa.patient.id)
+            bed = self.hospital.assign_bed(pa.patient.id, "icu")
+            if bed:
+                # Remove from current doctor's list
+                for da in self.doctors:
+                    if pa.patient.id in da.doctor.assigned_patient_ids:
+                        da.doctor.assigned_patient_ids.remove(pa.patient.id)
+                        da._update_workload()
+                        break
+                pa.patient.assigned_doctor_id = None
+                pa.patient.treatment_started_tick = None
+                pa.patient.location = "icu"
+                pa.patient.grid_x = bed.grid_x
+                pa.patient.grid_y = bed.grid_y
+                # Ensure visible to ICU doctor
+                existing_ids = {p.patient.id for p in self.queue.get_all()}
+                if pa.patient.id not in existing_ids:
+                    self.queue.push(pa)
+                self._events_this_tick.append(SimEvent(
+                    tick=self._tick,
+                    event_type="patient_escalated",
+                    entity_id=pa.patient.id,
+                    entity_type="patient",
+                    raw_description=f"{pa.patient.name} escalated from General Ward to ICU (critical, bed available)",
+                    llm_explanation=None,
+                    severity="critical",
+                ))
 
     def _move_to_discharge(
         self,

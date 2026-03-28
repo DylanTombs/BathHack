@@ -467,6 +467,7 @@ class OpenRouterLLMClient:
         """
         Select patient by highest severity then longest wait time.
         Deterministic and always returns a valid patient from the list.
+        Routes correctly based on doctor ward and patient severity.
         """
         if not context.available_patients:
             return DoctorDecision(
@@ -482,6 +483,27 @@ class OpenRouterLLMClient:
             context.available_patients,
             key=lambda p: (_severity_rank.get(p.severity, 0), p.wait_time_ticks),
         )
+
+        # Determine correct action based on doctor's ward and patient severity
+        doctor_ward = getattr(context.doctor, "ward", "general_ward")
+        if doctor_ward == "waiting":
+            # Triage: critical → ICU (or general if ICU full), medium → general, low → treat
+            if best.severity == "critical":
+                action = "general_ward" if context.icu_is_full else "icu"
+            elif best.severity == "medium":
+                action = "general_ward"
+            else:
+                action = "treat"
+        elif doctor_ward == "general_ward":
+            # Ward doctor: escalate critical to ICU if space available
+            if best.severity == "critical" and not context.icu_is_full:
+                action = "icu"
+            else:
+                action = "treat"
+        else:
+            # ICU doctor: treat or step down improving patients
+            action = "treat"
+
         return DoctorDecision(
             target_patient_id=best.id,
             reason=(
@@ -490,7 +512,7 @@ class OpenRouterLLMClient:
             ),
             confidence=1.0,
             fallback_used=True,
-            action="treat",
+            action=action,
         )
 
     def _rule_based_patient_fallback(self, context: PatientContext) -> PatientUpdate:

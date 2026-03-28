@@ -60,11 +60,16 @@ def build_doctor_decision_prompt(ctx: DoctorContext) -> str:
 
     if doctor_ward == "waiting":
         role_desc = "Triage doctor in the Waiting Area"
-        action_guide = """AVAILABLE ACTIONS for each patient (choose the most clinically appropriate):
-  "treat"         — treat the patient here in waiting (only for LOW severity; you can hold up to 5)
-  "general_ward"  — route to General Ward (medium/low needing a bed and ongoing care)
-  "icu"           — route directly to ICU (critical or rapidly deteriorating)
-  "discharge"     — send home from triage (very minor / walk-in, no admission needed)
+        action_guide = """MANDATORY ROUTING RULES — follow these strictly:
+  CRITICAL severity → MUST use "icu" (or "general_ward" if ICU is marked FULL above) — NEVER "treat" in waiting
+  MEDIUM severity   → MUST use "general_ward" — NEVER "treat" in waiting
+  LOW severity only → may use "treat" here in waiting, or "discharge" if very minor
+
+AVAILABLE ACTIONS:
+  "treat"         — treat in waiting (LOW severity ONLY; max 5 patients)
+  "general_ward"  — route to General Ward (medium severity; low needing a bed)
+  "icu"           — route to ICU (critical or rapidly deteriorating)
+  "discharge"     — send home (very minor, no admission needed)
 
 REQUIRED for treat / general_ward / icu:
   "treatment_ticks": your clinical estimate of how many ticks treatment will take

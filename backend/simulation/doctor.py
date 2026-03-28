@@ -54,9 +54,9 @@ _SPECIALTIES = ["General", "ICU", "Triage", "Emergency", "Cardiology"]
 
 # Grid zones for doctor placement (from data-contracts.md §6)
 _WARD_ZONES = {
-    "waiting":      (0.0,  7.0, 0.0,  5.0),
-    "general_ward": (0.0, 11.0, 6.0, 12.0),
-    "icu":          (12.0, 19.0, 6.0, 12.0),
+    "waiting":      (0.5,  6.5, 1.0,  5.0),
+    "general_ward": (0.5, 10.5, 7.0, 12.0),
+    "icu":          (12.5, 18.5, 7.0, 12.0),
 }
 
 _SEVERITY_RANK = {"critical": 2, "medium": 1, "low": 0}
@@ -115,6 +115,11 @@ class DoctorAgent:
         """
         if not candidates:
             return None
+
+        # Waiting-room triage must be deterministic and fair across ticks:
+        # highest severity first, then oldest waiting patient (FIFO).
+        if self.doctor.ward == "waiting":
+            return self._rule_based_pick(candidates)
 
         if self._should_call_llm_for_decision(tick, candidates, hospital):
             chosen = await self._llm_decide(candidates, tick, hospital)
@@ -223,6 +228,9 @@ class DoctorAgent:
         explanation = getattr(patient, "_pending_doctor_reason", None)
         confidence = getattr(patient, "_pending_doctor_confidence", None)
         action = getattr(patient, "_pending_decision_action", "treat")
+        # Guard: triage doctors must NEVER treat critical/medium patients in waiting room
+        if action == "treat" and self.doctor.ward == "waiting" and p.severity != "low":
+            action = "icu" if p.severity == "critical" else "general_ward"
         discharge_stay = getattr(patient, "_pending_discharge_stay", None)
         discharge_severity = getattr(patient, "_pending_discharge_severity", None)
         discharge_condition = getattr(patient, "_pending_discharge_condition", None)

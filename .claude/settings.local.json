@@ -1,0 +1,36 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s http://localhost:5173)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(curl -s http://localhost:8000/api/state)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(''''sim_datetime:'''', d.get\\(''''sim_datetime'''', ''''NOT FOUND''''\\)\\)\")",
+      "Bash(curl -s http://localhost:8000/api/metrics)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(json.dumps\\(d, indent=2\\)[:500]\\)\")",
+      "Bash(curl -s http://localhost:8000/openapi.json)",
+      "Bash(python3 -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d[''''paths''''].keys\\(\\)\\)\\)\")",
+      "Bash(python -c \"import json,sys; d=json.load\\(sys.stdin\\); print\\(list\\(d[''''paths''''].keys\\(\\)\\)\\)\")",
+      "Bash(python -c \":*)",
+      "Bash(find /c/Uni/BathHack/backend -name \"*.pyc\" -path \"*/simulation/*\" -delete)",
+      "Bash(taskkill /F /FI \"WINDOWTITLE eq uvicorn*\")",
+      "Bash(taskkill /F /FI \"IMAGENAME eq python.exe\")",
+      "Bash(netstat -ano)",
+      "Bash(taskkill /F /PID 10316 /PID 28020)",
+      "Bash(taskkill /F /PID 10316)",
+      "Bash(taskkill /F /PID 28020)",
+      "Bash(cmd /c \"taskkill /F /PID 10316\")",
+      "Bash(cmd /c \"taskkill /F /PID 28020\")",
+      "Bash(powershell -Command \"Stop-Process -Id 10316 -Force -ErrorAction SilentlyContinue; Stop-Process -Id 28020 -Force -ErrorAction SilentlyContinue; Write-Host done\")",
+      "Bash(powershell -Command \"Get-Process -Id 10316, 28020 | Select-Object Id, Name, Path\")",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8000 -State Listen | Select-Object LocalAddress, LocalPort, OwningProcess\")",
+      "Bash(powershell -Command \"Get-Process -Id 28020 | Select-Object Id, Name, Path, StartTime\")",
+      "Bash(powershell -Command \"Get-Process python* | Stop-Process -Force; Get-Process uvicorn* | Stop-Process -Force\")",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | Select-Object OwningProcess\")",
+      "Bash(curl -s http://localhost:8000/api/health)",
+      "Bash(python -c \"import openai\")",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { $p = $_.OwningProcess; Write-Host \"\"PID: $p\"\"; Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }\")",
+      "Bash(git pull:*)"
+    ]
+  }
+}
