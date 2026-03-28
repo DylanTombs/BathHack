@@ -196,6 +196,8 @@ async def _handle_command(
             if "tick_interval_seconds" in raw_config:
                 tick_seconds = float(raw_config["tick_interval_seconds"])
                 engine.config.tick_interval_seconds = max(0.05, min(10.0, tick_seconds))
+            if "severity_level" in raw_config:
+                engine.set_severity_level(int(raw_config["severity_level"]))
             await manager.send_to(ws, {
                 "type": "config_ack",
                 "config": raw_config,

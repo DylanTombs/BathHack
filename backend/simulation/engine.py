@@ -64,6 +64,16 @@ _SEVERITY_RANK = {"critical": 2, "medium": 1, "low": 0}
 # Severity distribution during a surge (still elevated acuity, but realistic)
 _SURGE_SEVERITY_WEIGHTS = [("low", 0.45), ("medium", 0.35), ("critical", 0.20)]
 
+# ── Severity-level tables (1=Mild, 2=Moderate, 3=Serious, 4=Critical) ─────────
+_SEVERITY_WEIGHTS_BY_LEVEL: dict[int, list[tuple[str, float]]] = {
+    1: [("low", 0.85), ("medium", 0.13), ("critical", 0.02)],
+    2: [("low", 0.72), ("medium", 0.24), ("critical", 0.04)],  # baseline
+    3: [("low", 0.50), ("medium", 0.35), ("critical", 0.15)],
+    4: [("low", 0.25), ("medium", 0.40), ("critical", 0.35)],
+}
+_FATAL_WAIT_MULTIPLIER_BY_LEVEL: dict[int, float] = {1: 2.0, 2: 1.0, 3: 0.6, 4: 0.3}
+_DEATH_RISK_MULTIPLIER_BY_LEVEL: dict[int, float] = {1: 0.25, 2: 1.0, 3: 3.0, 4: 8.0}
+
 # Simulated calendar — tick 0 = Monday 06:00, each tick = 15 simulated minutes
 _SIM_START_DAY = 0    # 0=Monday
 _SIM_START_HOUR = 6   # 06:00
@@ -128,6 +138,9 @@ class SimulationEngine:
 
         # Effective arrival rate (can be modified by apply_config or surge)
         self._arrival_rate: float = config.arrival_rate_per_tick
+
+        # Severity level (1=Mild, 2=Moderate, 3=Serious, 4=Critical)
+        self._severity_level: int = 2
 
         self._init_doctors()
 
@@ -381,6 +394,14 @@ class SimulationEngine:
         self._scenario = "normal"
         logger.info("Recovery triggered at tick %d", self._tick)
 
+    def set_severity_level(self, level: int) -> None:
+        """Set the severity level (1–4) affecting arrival mix, fatal waits, and death risk."""
+        self._severity_level = max(1, min(4, level))
+        multiplier = _DEATH_RISK_MULTIPLIER_BY_LEVEL[self._severity_level]
+        for pa in self.patients.values():
+            pa.death_risk_multiplier = multiplier
+        logger.info("Severity level set to %d at tick %d", self._severity_level, self._tick)
+
     def get_metrics(self) -> MetricsSnapshot:
         history = self.metrics.get_history()
         if history:
@@ -428,6 +449,7 @@ class SimulationEngine:
         self._shortage_ticks_remaining = 0
         self._benched_doctors = []
         self._arrival_rate = self.config.arrival_rate_per_tick
+        self._severity_level = 2
         self._init_doctors()
 
     # ── Internal helpers ──────────────────────────────────────────────────────
@@ -475,6 +497,10 @@ class SimulationEngine:
         rate = self._arrival_rate * self._surge_arrival_multiplier
         poisson_count = _poisson_draw(rate)
 
+        sev_weights = _SEVERITY_WEIGHTS_BY_LEVEL[self._severity_level]
+        fatal_wait_mult = _FATAL_WAIT_MULTIPLIER_BY_LEVEL[self._severity_level]
+        death_risk_mult = _DEATH_RISK_MULTIPLIER_BY_LEVEL[self._severity_level]
+
         def _fallback_specs() -> list[PatientSpec]:
             specs = []
             for _ in range(poisson_count):
@@ -482,6 +508,13 @@ class SimulationEngine:
                 if self._surge_ticks_remaining > 0:
                     r, cum = random.random(), 0.0
                     for sev, w in _SURGE_SEVERITY_WEIGHTS:
+                        cum += w
+                        if r < cum:
+                            force_sev = sev  # type: ignore[assignment]
+                            break
+                else:
+                    r, cum = random.random(), 0.0
+                    for sev, w in sev_weights:
                         cum += w
                         if r < cum:
                             force_sev = sev  # type: ignore[assignment]
@@ -510,16 +543,23 @@ class SimulationEngine:
             )
             specs = await generate_fn(ctx, _fallback_specs)
 
+        # Scale fatal_wait_ticks by severity level
+        for spec in specs:
+            if spec.fatal_wait_ticks is not None:
+                spec.fatal_wait_ticks = max(1, round(spec.fatal_wait_ticks * fatal_wait_mult))
+
         arrivals = []
         for spec in specs:
             pid = self._next_patient_id()
-            arrivals.append(PatientAgent.create_from_spec(
+            pa = PatientAgent.create_from_spec(
                 patient_id=pid,
                 tick=self._tick,
                 hospital=self.hospital,
                 spec=spec,
                 llm_callback=self.llm_callback,
-            ))
+            )
+            pa.death_risk_multiplier = death_risk_mult
+            arrivals.append(pa)
         return arrivals
 
     async def _update_patients(self) -> list[SimEvent]:
@@ -844,6 +884,7 @@ class SimulationEngine:
             surge_ticks_remaining=self._surge_ticks_remaining,
             shortage_ticks_remaining=self._shortage_ticks_remaining,
             tick_speed_seconds=self.config.tick_interval_seconds,
+            severity_level=self._severity_level,
         )
 
 

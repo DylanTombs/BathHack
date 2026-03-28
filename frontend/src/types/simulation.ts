@@ -108,6 +108,7 @@ export interface SimulationState {
   surge_ticks_remaining: number;
   shortage_ticks_remaining: number;
   tick_speed_seconds?: number;
+  severity_level?: number;
 }
 
 export interface ExplanationResponse {
@@ -124,4 +125,5 @@ export interface ScenarioConfig {
   num_doctors: number;
   arrival_rate_per_tick: number;
   tick_speed_seconds: number;
+  severity_level?: number;
 }

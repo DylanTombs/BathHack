@@ -148,6 +148,7 @@ class SimulationState:
     surge_ticks_remaining: int              # 0 when not active
     shortage_ticks_remaining: int           # 0 when not active
     tick_speed_seconds: float = 1.0         # real seconds per sim tick
+    severity_level: int = 2                 # 1=Mild, 2=Moderate, 3=Serious, 4=Critical
 
 # ─── Control Messages (frontend → backend) ────────────────────────────────────
 
