@@ -12,15 +12,27 @@ export const ControlPanel: React.FC = () => {
     doctors,
     wards,
     arrivalRate: storeArrivalRate,
+    severityLevel: storeSeverityLevel,
+    tickSpeedSeconds,
     surgeTicks,
     shortageTicks,
   } = useSimulationStore();
   const { startSim, pauseSim, resetSim, triggerSurge, triggerShortage, triggerRecovery, updateConfig, addDoctor, removeDoctor, addBed, removeBed } = useWebSocket();
   const [arrivalRate, setArrivalRate] = useState(1.5);
-  // Sync slider whenever backend resets arrival rate (e.g. Normal button)
+  const [severityLevel, setSeverityLevel] = useState(2);
+  const [tickSpeedMultiplier, setTickSpeedMultiplier] = useState(1.0);
+
+  // Sync sliders from backend state
+  useEffect(() => { setArrivalRate(storeArrivalRate); }, [storeArrivalRate]);
+  useEffect(() => { setSeverityLevel(storeSeverityLevel); }, [storeSeverityLevel]);
+  // Sync tick speed only once on initial connect (tickSpeedSeconds starts at 1.0 default)
+  const [tickSpeedSynced, setTickSpeedSynced] = useState(false);
   useEffect(() => {
-    setArrivalRate(storeArrivalRate);
-  }, [storeArrivalRate]);
+    if (!tickSpeedSynced && tickSpeedSeconds > 0 && tickSpeedSeconds !== 1.0) {
+      setTickSpeedMultiplier(Math.max(0.25, Math.min(10, 1 / tickSpeedSeconds)));
+      setTickSpeedSynced(true);
+    }
+  }, [tickSpeedSeconds, tickSpeedSynced]);
 
   const [selectedSpecialty, setSelectedSpecialty] = useState('General');
   const [selectedWard, setSelectedWard] = useState<'general_ward' | 'icu'>('general_ward');
@@ -123,6 +135,49 @@ export const ControlPanel: React.FC = () => {
               }}
               className="w-full accent-blue-500"
             />
+          </label>
+
+          {/* Tick speed slider */}
+          <label className="block">
+            <div className="flex justify-between text-xs text-gray-600 mb-1">
+              <span>Tick Speed</span>
+              <span className="font-mono">{tickSpeedMultiplier.toFixed(1)}x</span>
+            </div>
+            <input
+              type="range" min={0.25} max={10} step={0.25}
+              value={tickSpeedMultiplier}
+              onChange={e => {
+                const multiplier = parseFloat(e.target.value);
+                setTickSpeedMultiplier(multiplier);
+                updateConfig({ tick_speed_seconds: 1 / multiplier });
+              }}
+              className="w-full accent-indigo-500"
+            />
+          </label>
+
+          {/* Severity level slider */}
+          <label className="block">
+            <div className="flex justify-between text-xs text-gray-600 mb-1">
+              <span>Severity</span>
+              <span className="font-mono font-semibold" style={{
+                color: ['', '#22c55e', '#f59e0b', '#f97316', '#ef4444'][severityLevel]
+              }}>
+                {['', 'Mild', 'Moderate', 'Serious', 'Critical'][severityLevel]}
+              </span>
+            </div>
+            <input
+              type="range" min={1} max={4} step={1}
+              value={severityLevel}
+              onChange={e => {
+                const v = parseInt(e.target.value);
+                setSeverityLevel(v);
+                updateConfig({ severity_level: v });
+              }}
+              className="w-full accent-rose-500"
+            />
+            <div className="flex justify-between text-xs text-gray-400 mt-0.5">
+              <span>Mild</span><span>Moderate</span><span>Serious</span><span>Critical</span>
+            </div>
           </label>
 
           {/* Doctors +/- with specialty dropdown */}

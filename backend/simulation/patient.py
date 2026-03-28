@@ -111,6 +111,7 @@ class PatientAgent:
         self._condition_changed_this_tick: bool = False
         self._last_death_risk_pct: float = 0.0
         self._died_this_tick: bool = False
+        self.death_risk_multiplier: float = 1.0  # scaled by engine severity level
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -323,7 +324,7 @@ class PatientAgent:
         elif (
             p.assigned_doctor_id is not None
             and self._last_death_risk_pct > 0.0
-            and random.random() < self._last_death_risk_pct
+            and random.random() < self._last_death_risk_pct * self.death_risk_multiplier
         ):
             died = True
 
