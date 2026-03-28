@@ -32,6 +32,12 @@ class Patient:
     grid_y: float
     # LLM explanation for last condition change (optional)
     last_event_explanation: Optional[str] = None
+    # AI-generated reason for attending A&E (optional)
+    backstory: Optional[str] = None
+    # Ward routing (set by Triage doctor)
+    pending_destination: Optional[str] = None      # "general_ward"|"icu" — waiting for a bed
+    discharge_stay_ticks: int = 2                  # how long to show in discharge zone
+    discharge_started_tick: Optional[int] = None   # set when moved to discharged
 
 # ─── Doctor ───────────────────────────────────────────────────────────────────
 
@@ -47,6 +53,10 @@ class Doctor:
     grid_y: float
     is_available: bool                      # False if at max capacity
     decisions_made: int                     # total decisions this session
+    last_decision_reason: Optional[str] = None      # LLM reason or rule-based summary
+    last_decision_confidence: Optional[float] = None
+    last_decision_patient_id: Optional[int] = None
+    ward: str = "waiting"                           # "waiting"|"general_ward"|"icu"
 
 # ─── Bed ──────────────────────────────────────────────────────────────────────
 
@@ -120,6 +130,7 @@ class SimEvent:
 class SimulationState:
     tick: int
     timestamp: float                        # unix time
+    sim_datetime: str                       # e.g. "Monday 14:00" — simulated in-world time
     patients: list[Patient]
     doctors: list[Doctor]
     beds: list[Bed]
@@ -128,6 +139,10 @@ class SimulationState:
     events: list[SimEvent]                  # events since last tick
     scenario: str                           # "normal", "surge", "shortage"
     is_running: bool
+    arrival_rate: float                     # current base arrival rate (for UI sync)
+    surge_ticks_remaining: int              # 0 when not active
+    shortage_ticks_remaining: int           # 0 when not active
+    tick_speed_seconds: float = 1.0         # real seconds per sim tick
 
 # ─── Control Messages (frontend → backend) ────────────────────────────────────
 
@@ -163,6 +178,11 @@ class DoctorDecision:
     reason: str                             # LLM-generated
     confidence: float                       # 0.0 – 1.0
     fallback_used: bool                     # True if LLM was skipped
+    action: str = "treat"                   # "treat"|"general_ward"|"icu"|"discharge"
+    discharge_stay_ticks: Optional[int] = None   # only when action=="discharge"
+    discharge_severity: Optional[str] = None     # LLM-assessed severity at discharge
+    discharge_condition: Optional[str] = None    # LLM-assessed condition at discharge
+    treatment_ticks: Optional[int] = None        # triage-assessed treatment duration (overrides random)
 
 @dataclass
 class PatientUpdate:
@@ -188,3 +208,27 @@ class PatientContext:
     ward_occupancy_pct: float
     doctor_available: bool
     current_tick: int
+
+# ─── Patient Arrival Types (LLM-driven generation) ────────────────────────────
+
+@dataclass
+class ArrivalContext:
+    tick: int
+    hour_of_day: int            # 0–23
+    day_of_week: int            # 0=Monday … 6=Sunday
+    day_name: str               # "Monday" … "Sunday"
+    sim_datetime: str           # e.g. "Monday 06:45" — full formatted sim time
+    scenario: str               # "normal" | "surge" | "shortage"
+    surge_active: bool
+    current_queue_length: int
+    general_ward_occupancy_pct: float
+    icu_occupancy_pct: float
+    arrival_rate_hint: float    # base_rate * surge_multiplier
+
+@dataclass
+class PatientSpec:
+    name: str
+    age: int
+    severity: Severity
+    diagnosis: str
+    backstory: Optional[str]   # 1–2 sentence reason for attending A&E

@@ -19,6 +19,7 @@ interface Props {
   cellSize: number;
   isSelected: boolean;
   onClick: () => void;
+  opacity?: number;
 }
 
 interface TooltipData {
@@ -26,27 +27,33 @@ interface TooltipData {
   y: number;
 }
 
-export const PatientIcon: React.FC<Props> = ({ patient, cellSize, isSelected, onClick }) => {
+export const PatientIcon: React.FC<Props> = ({ patient, cellSize, isSelected, onClick, opacity = 1 }) => {
   const [tooltip, setTooltip] = useState<TooltipData | null>(null);
+  const r = isSelected ? 12 : 9;
+  // Pixel center of the patient's grid cell
   const cx = (patient.grid_x + 0.5) * cellSize;
   const cy = (patient.grid_y + 0.5) * cellSize;
-  const r = isSelected ? 12 : 9;
+  // Group origin is top-left of the circle bounding box; scale is applied around circle center (r,r)
+  const gx = cx - r;
+  const gy = cy - r;
 
   return (
     <motion.g
-      initial={{ opacity: 0, scale: 0.5 }}
-      animate={{ opacity: 1, scale: 1 }}
+      // Single element handles both position (x/y) and entrance animation (scale/opacity)
+      // transformOrigin set to circle center so scale doesn't jump to SVG origin (0,0)
+      initial={{ opacity: 0, scale: 0.5, x: gx, y: gy }}
+      animate={{ opacity: opacity, scale: 1, x: gx, y: gy }}
       exit={{ opacity: 0, scale: 0 }}
-      transition={{ duration: 0.3 }}
+      transition={{ duration: 0.25 }}
+      style={{ transformOrigin: `${r}px ${r}px`, cursor: 'pointer' }}
       onClick={onClick}
       onMouseEnter={(e) => setTooltip({ x: e.clientX, y: e.clientY })}
       onMouseLeave={() => setTooltip(null)}
-      style={{ cursor: 'pointer' }}
     >
-      {/* Pulsing ring for critical patients */}
+      {/* Pulsing ring for critical patients — position relative to circle center */}
       {patient.severity === 'critical' && (
         <motion.circle
-          cx={cx} cy={cy}
+          cx={r} cy={r}
           r={14}
           fill="none"
           stroke="#ef4444"
@@ -55,38 +62,29 @@ export const PatientIcon: React.FC<Props> = ({ patient, cellSize, isSelected, on
           transition={{ repeat: Infinity, duration: 1.5 }}
         />
       )}
-      {/* Position animation wrapper */}
-      <motion.g
-        animate={{ x: cx - (isSelected ? 12 : 9), y: cy - (isSelected ? 12 : 9) }}
-        initial={false}
-        transition={{ type: 'spring', stiffness: 120, damping: 20 }}
+      {/* Body circle */}
+      <circle
+        cx={r} cy={r}
+        r={r}
+        fill={SEVERITY_COLOR[patient.severity]}
+        stroke={isSelected ? '#1d4ed8' : CONDITION_STROKE[patient.condition]}
+        strokeWidth={isSelected ? 3 : 2}
+        opacity={0.9}
+      />
+      {/* P label */}
+      <text
+        x={r} y={r + 4}
+        textAnchor="middle"
+        fontSize={10}
+        fontWeight="bold"
+        fill="white"
       >
-        {/* Body circle */}
-        <circle
-          cx={isSelected ? 12 : 9}
-          cy={isSelected ? 12 : 9}
-          r={r}
-          fill={SEVERITY_COLOR[patient.severity]}
-          stroke={isSelected ? '#1d4ed8' : CONDITION_STROKE[patient.condition]}
-          strokeWidth={isSelected ? 3 : 2}
-          opacity={0.9}
-        />
-        {/* P label */}
-        <text
-          x={isSelected ? 12 : 9}
-          y={(isSelected ? 12 : 9) + 4}
-          textAnchor="middle"
-          fontSize={10}
-          fontWeight="bold"
-          fill="white"
-        >
-          P
-        </text>
-      </motion.g>
+        P
+      </text>
       {/* Tooltip */}
       <AnimatePresence>
         {tooltip && (
-          <foreignObject x={cx + 14} y={cy - 40} width={160} height={90} style={{ overflow: 'visible' }}>
+          <foreignObject x={r * 2 + 5} y={r - 40} width={160} height={90} style={{ overflow: 'visible' }}>
             <motion.div
               initial={{ opacity: 0, y: -4 }}
               animate={{ opacity: 1, y: 0 }}

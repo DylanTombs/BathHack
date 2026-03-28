@@ -32,11 +32,15 @@ const MetricCard: React.FC<MetricCardProps> = ({ label, value, highlight, highli
 };
 
 export const MetricsBanner: React.FC = () => {
-  const { metrics, tick } = useSimulationStore();
+  const { metrics, tick, simDatetime } = useSimulationStore();
 
   return (
     <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
       <div className="flex items-center gap-2 overflow-x-auto">
+        <div className="flex flex-col items-center px-4 py-2 rounded-lg bg-indigo-50 ring-1 ring-indigo-200 min-w-30">
+          <span className="text-xs text-indigo-500 uppercase font-medium">Sim Time</span>
+          <span className="text-lg font-bold text-indigo-700 whitespace-nowrap">{simDatetime}</span>
+        </div>
         <MetricCard label="Tick" value={tick} highlightColor="bg-blue-50" />
         <MetricCard label="Arrived" value={metrics?.total_patients_arrived ?? 0} highlightColor="bg-blue-50" />
         <MetricCard label="Discharged" value={metrics?.total_patients_discharged ?? 0} highlightColor="bg-green-50" />

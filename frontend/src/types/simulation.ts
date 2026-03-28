@@ -23,6 +23,10 @@ export interface Patient {
   grid_x: number;
   grid_y: number;
   last_event_explanation: string | null;
+  backstory: string | null;
+  pending_destination: string | null;
+  discharge_stay_ticks: number;
+  discharge_started_tick: number | null;
 }
 
 export interface Doctor {
@@ -36,6 +40,10 @@ export interface Doctor {
   grid_y: number;
   is_available: boolean;
   decisions_made: number;
+  last_decision_reason: string | null;
+  last_decision_confidence: number | null;
+  last_decision_patient_id: number | null;
+  ward: string;
 }
 
 export interface Bed {
@@ -83,6 +91,7 @@ export interface SimulationState {
   type: 'sim_state';
   tick: number;
   timestamp: number;
+  sim_datetime: string;
   scenario: string;
   is_running: boolean;
   patients: Patient[];
@@ -91,6 +100,10 @@ export interface SimulationState {
   wards: Record<WardName, WardState>;
   metrics: Metrics;
   events: SimEvent[];
+  arrival_rate: number;
+  surge_ticks_remaining: number;
+  shortage_ticks_remaining: number;
+  tick_speed_seconds?: number;
 }
 
 export interface ExplanationResponse {

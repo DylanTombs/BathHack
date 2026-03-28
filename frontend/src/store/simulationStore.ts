@@ -19,6 +19,11 @@ interface SimulationStore {
   tick: number;
   isRunning: boolean;
   scenario: string;
+  simDatetime: string;
+  arrivalRate: number;
+  tickSpeedSeconds: number;
+  surgeTicks: number;
+  shortageTicks: number;
   patients: Patient[];
   doctors: Doctor[];
   metrics: Metrics | null;
@@ -43,6 +48,11 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   tick: 0,
   isRunning: false,
   scenario: 'normal',
+  simDatetime: 'Monday 06:00',
+  arrivalRate: 1.5,
+  tickSpeedSeconds: 1.0,
+  surgeTicks: 0,
+  shortageTicks: 0,
   patients: [],
   doctors: [],
   metrics: null,
@@ -56,6 +66,11 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
       tick: state.tick,
       isRunning: state.is_running,
       scenario: state.scenario,
+      simDatetime: state.sim_datetime,
+      arrivalRate: state.arrival_rate,
+      tickSpeedSeconds: state.tick_speed_seconds ?? get().tickSpeedSeconds,
+      surgeTicks: state.surge_ticks_remaining,
+      shortageTicks: state.shortage_ticks_remaining,
       patients: state.patients,
       doctors: state.doctors,
       metrics: state.metrics,

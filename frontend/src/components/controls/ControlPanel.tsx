@@ -1,12 +1,37 @@
-import React, { useState, useCallback } from 'react';
+import React, { useState, useCallback, useEffect } from 'react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSimulationStore } from '../../store/simulationStore';
 
+const SPECIALTIES = ['General', 'ICU', 'Triage'];
+
 export const ControlPanel: React.FC = () => {
-  const { isRunning, scenario, connected } = useSimulationStore();
-  const { startSim, pauseSim, resetSim, triggerSurge, triggerShortage, triggerRecovery, updateConfig } = useWebSocket();
+  const {
+    isRunning,
+    scenario,
+    connected,
+    doctors,
+    arrivalRate: storeArrivalRate,
+    tickSpeedSeconds,
+    surgeTicks,
+    shortageTicks,
+  } = useSimulationStore();
+  const { startSim, pauseSim, resetSim, triggerSurge, triggerShortage, triggerRecovery, updateConfig, addDoctor, removeDoctor } = useWebSocket();
   const [arrivalRate, setArrivalRate] = useState(1.5);
-  const [numDoctors, setNumDoctors] = useState(4);
+  const [tickSpeedMultiplier, setTickSpeedMultiplier] = useState(1.0);
+
+  // Sync slider whenever backend resets arrival rate (e.g. Normal button)
+  useEffect(() => {
+    setArrivalRate(storeArrivalRate);
+  }, [storeArrivalRate]);
+
+  // Backend stores seconds-per-tick; UI controls human-friendly speed multiplier.
+  useEffect(() => {
+    if (tickSpeedSeconds > 0) {
+      const nextMultiplier = Math.max(0.5, Math.min(5, 1 / tickSpeedSeconds));
+      setTickSpeedMultiplier(nextMultiplier);
+    }
+  }, [tickSpeedSeconds]);
+  const [selectedSpecialty, setSelectedSpecialty] = useState('General');
   const [pending, setPending] = useState(false);
 
   const handleStartPause = useCallback(() => {
@@ -17,7 +42,6 @@ export const ControlPanel: React.FC = () => {
     } else {
       startSim();
     }
-    // Clear pending after 1.5s — ack or next sim_state will have updated isRunning by then
     setTimeout(() => setPending(false), 1500);
   }, [pending, connected, isRunning, pauseSim, startSim]);
 
@@ -63,13 +87,13 @@ export const ControlPanel: React.FC = () => {
             onClick={triggerSurge}
             className="py-2 px-2 rounded-lg text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
           >
-            🚨 Surge
+            {surgeTicks > 0 ? `${surgeTicks * 15} min` : '🚨 Surge'}
           </button>
           <button
             onClick={triggerShortage}
             className="py-2 px-2 rounded-lg text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
           >
-            👨‍⚕️ Shortage
+            {shortageTicks > 0 ? `${shortageTicks * 15} min` : '👨‍⚕️ Shortage'}
           </button>
           <button
             onClick={triggerRecovery}
@@ -87,10 +111,11 @@ export const ControlPanel: React.FC = () => {
         )}
       </div>
 
-      {/* Config sliders */}
+      {/* Configuration */}
       <div>
         <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Configuration</h3>
         <div className="space-y-3">
+          {/* Arrival rate slider */}
           <label className="block">
             <div className="flex justify-between text-xs text-gray-600 mb-1">
               <span>Arrival Rate</span>
@@ -107,22 +132,60 @@ export const ControlPanel: React.FC = () => {
               className="w-full accent-blue-500"
             />
           </label>
+
+          {/* Tick speed slider */}
           <label className="block">
             <div className="flex justify-between text-xs text-gray-600 mb-1">
-              <span>Doctors</span>
-              <span className="font-mono">{numDoctors}</span>
+              <span>Tick Speed</span>
+              <span className="font-mono">{tickSpeedMultiplier.toFixed(1)}x</span>
             </div>
             <input
-              type="range" min={1} max={10} step={1}
-              value={numDoctors}
+              type="range" min={0.5} max={5} step={0.5}
+              value={tickSpeedMultiplier}
               onChange={e => {
-                const v = parseInt(e.target.value);
-                setNumDoctors(v);
-                updateConfig({ num_doctors: v });
+                const multiplier = parseFloat(e.target.value);
+                const secondsPerTick = 1 / multiplier;
+                setTickSpeedMultiplier(multiplier);
+                updateConfig({ tick_speed_seconds: secondsPerTick });
               }}
-              className="w-full accent-purple-500"
+              className="w-full accent-indigo-500"
             />
           </label>
+
+          {/* Doctors +/- with specialty dropdown */}
+          <div>
+            <div className="flex justify-between text-xs text-gray-600 mb-1">
+              <span>Doctors</span>
+              <span className="font-mono">{doctors.length} on duty</span>
+            </div>
+            <div className="flex gap-2 items-center">
+              <select
+                value={selectedSpecialty}
+                onChange={e => setSelectedSpecialty(e.target.value)}
+                className="flex-1 text-xs border border-gray-200 rounded-lg px-2 py-1.5 bg-white text-gray-700 focus:outline-none focus:ring-1 focus:ring-purple-400"
+              >
+                {SPECIALTIES.map(s => (
+                  <option key={s} value={s}>{s}</option>
+                ))}
+              </select>
+              <button
+                onClick={() => addDoctor(selectedSpecialty)}
+                disabled={!connected}
+                className="px-3 py-1.5 rounded-lg text-sm font-bold bg-purple-100 text-purple-700 hover:bg-purple-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title={`Add ${selectedSpecialty} doctor`}
+              >
+                +
+              </button>
+              <button
+                onClick={removeDoctor}
+                disabled={!connected || doctors.length <= 1}
+                className="px-3 py-1.5 rounded-lg text-sm font-bold bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                title="Remove last doctor"
+              >
+                −
+              </button>
+            </div>
+          </div>
         </div>
       </div>
     </div>
