@@ -1,0 +1,354 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<title>Hospital 3D</title>
+<style>
+*{margin:0;padding:0}canvas{display:block}
+#hud{position:fixed;top:0;left:0;right:0;padding:10px 20px;background:rgba(255,255,255,.88);backdrop-filter:blur(6px);display:flex;align-items:center;gap:12px;border-bottom:2px solid #e53935;box-shadow:0 2px 8px rgba(0,0,0,.15);z-index:10}
+#hud span{font:bold 18px sans-serif;color:#c62828;letter-spacing:1px}
+#hud small{font:12px sans-serif;color:#666}
+#labels{position:fixed;top:0;left:0;pointer-events:none}
+</style>
+</head>
+<body>
+<div id="hud">
+  <svg width="26" height="26" viewBox="0 0 26 26"><rect x="10" y="3" width="6" height="20" rx="1" fill="#e53935"/><rect x="3" y="10" width="20" height="6" rx="1" fill="#e53935"/></svg>
+  <span>CITY GENERAL HOSPITAL</span>
+  <small>drag to orbit &nbsp;|&nbsp; scroll to zoom</small>
+</div>
+<div id="labels"></div>
+<script type="module">
+import * as T from 'https://cdn.jsdelivr.net/npm/three@0.160/build/three.module.min.js';
+
+const W = innerWidth, H = innerHeight;
+const renderer = new T.WebGLRenderer({ antialias: true });
+renderer.setSize(W, H);
+renderer.shadowMap.enabled = true;
+renderer.setClearColor(0x87ceeb);
+document.body.appendChild(renderer.domElement);
+
+const scene = new T.Scene();
+scene.fog = new T.FogExp2(0x87ceeb, 0.016);
+
+const cam = new T.PerspectiveCamera(48, W / H, 0.1, 200);
+
+// Lighting
+scene.add(new T.AmbientLight(0xffffff, 0.65));
+const sun = new T.DirectionalLight(0xffffff, 1.1);
+sun.position.set(12, 22, 8);
+sun.castShadow = true;
+sun.shadow.mapSize.set(1024, 1024);
+scene.add(sun);
+
+// Room overhead lights
+[[-7,-5],[7,-5],[-7,5],[7,5]].forEach(([x,z]) => {
+  const l = new T.PointLight(0xfff5e0, 0.5, 14);
+  l.position.set(x, 3.6, z);
+  scene.add(l);
+});
+
+// ── helpers ──────────────────────────────────────────────────────────────────
+function box(w, h, d, col, x, y, z, op) {
+  op = op === undefined ? 1 : op;
+  const m = new T.Mesh(
+    new T.BoxGeometry(w, h, d),
+    new T.MeshLambertMaterial({ color: col, transparent: op < 1, opacity: op })
+  );
+  m.position.set(x, y, z);
+  m.castShadow = true;
+  m.receiveShadow = true;
+  scene.add(m);
+  return m;
+}
+function flat(w, d, col, x, z, y) {
+  const m = new T.Mesh(
+    new T.PlaneGeometry(w, d),
+    new T.MeshLambertMaterial({ color: col })
+  );
+  m.rotation.x = -Math.PI / 2;
+  m.position.set(x, y === undefined ? 0.01 : y, z);
+  m.receiveShadow = true;
+  scene.add(m);
+}
+
+// ── exterior ─────────────────────────────────────────────────────────────────
+flat(100, 100, 0x5a8a3c, 0, 0, 0);       // grass
+flat(38, 26, 0x9e9e9e, 0, 0, 0.02);     // pavement
+flat(6, 8, 0x757575, 0, 14.5, 0.04);    // entrance path
+
+// Parking bays
+[-14,-10,-6,6,10,14].forEach(x => flat(1.8, 0.15, 0xffffff, x, 15.5, 0.06));
+
+// Trees (moved further out)
+[[-20,-12],[20,-12],[-20,10],[20,10],[-20,0],[20,0]].forEach(([x,z]) => {
+  box(0.4, 2, 0.4, 0x5d4037, x, 0.9, z);
+  const cone = new T.Mesh(
+    new T.ConeGeometry(1.2, 2.5, 7),
+    new T.MeshLambertMaterial({ color: 0x2e7d32 })
+  );
+  cone.position.set(x, 3.2, z);
+  scene.add(cone);
+});
+
+// Ambulance
+box(2.5, 1, 1.2, 0xfafafa, -10, 0.5, 10.5);
+box(1.2, 0.7, 1.1, 0xfafafa, -9.35, 1.1, 10.5);
+box(2.4, 0.05, 1.1, 0xe53935, -10, 0.5, 10.5); // red stripe
+[[-9.2,10],[-10.8,10],[-9.2,11],[-10.8,11]].forEach(([x,z]) => {
+  const w = new T.Mesh(
+    new T.CylinderGeometry(0.22, 0.22, 0.2, 12),
+    new T.MeshLambertMaterial({ color: 0x212121 })
+  );
+  w.position.set(x, 0.05, z);
+  scene.add(w);
+});
+
+// ── building shell ────────────────────────────────────────────────────────────
+const WC = 0xf0f4f8, wallH = 4, wt = 0.28;
+box(32, wallH, wt, WC, 0, wallH/2, -11.5, 0.3);  // north wall
+box(32, wallH, wt, WC, 0, wallH/2, 11.5, 0.3);   // south wall
+box(wt, wallH, 23, WC, -15.5, wallH/2, 0, 0.3);  // west wall
+box(wt, wallH, 23, WC, 15.5, wallH/2, 0, 0.3);   // east wall
+// roof removed
+
+// Hospital cross on north face
+const rcm = new T.MeshLambertMaterial({ color: 0xe53935, emissive: 0xe53935, emissiveIntensity: 0.3 });
+const cv = new T.Mesh(new T.BoxGeometry(0.4, 1.6, 0.1), rcm);
+cv.position.set(0, 3.1, -11.4); scene.add(cv);
+const ch = new T.Mesh(new T.BoxGeometry(1.6, 0.4, 0.1), rcm);
+ch.position.set(0, 3.1, -11.4); scene.add(ch);
+
+// ── interior floors ───────────────────────────────────────────────────────────
+flat(14.2, 10.2, 0xbbdefb, -7, -5, 0.04);  // waiting
+flat(14.2, 10.2, 0xd4edda,  7, -5, 0.04);  // discharge
+flat(14.2, 10.2, 0xe8f5e9, -7,  5, 0.04);  // general
+flat(14.2, 10.2, 0xffcdd2,  7,  5, 0.04);  // ICU
+flat(30, 2.8, 0xeceff1, 0, 0, 0.04);       // H corridor
+flat(2.8, 20, 0xeceff1, 0, 0, 0.05);       // V corridor
+
+// ── interior walls ────────────────────────────────────────────────────────────
+const IW = 0xfafafa;
+[-1.5, 1.5].forEach(zo => {
+  box(12, wallH, wt, IW, -9, wallH/2, zo, 0.25);
+  box(12, wallH, wt, IW,  9, wallH/2, zo, 0.25);
+});
+[-1.5, 1.5].forEach(xo => {
+  box(wt, wallH, 9, IW, xo, wallH/2, -6.5, 0.25);
+  box(wt, wallH, 9, IW, xo, wallH/2,  6.5, 0.25);
+});
+
+// Fluorescent ceiling strips
+const stripMat = new T.MeshLambertMaterial({ color: 0xffffff, emissive: 0xd0eeff, emissiveIntensity: 0.8 });
+[[-7,-5],[7,-5],[-7,5],[7,5]].forEach(([x,z]) => {
+  const s = new T.Mesh(new T.BoxGeometry(2.8, 0.06, 0.18), stripMat);
+  s.position.set(x, wallH - 0.05, z);
+  scene.add(s);
+});
+
+// ── entrance glass doors ──────────────────────────────────────────────────────
+box(2.6, 3, 0.06, 0x90caf9, 0, 1.5, 11.45, 0.6);
+box(0.06, 3, 0.5, 0xb0bec5, 1.3, 1.5, 11.22);
+box(0.06, 3, 0.5, 0xb0bec5, -1.3, 1.5, 11.22);
+
+// ── nurses station (centre corridor) ─────────────────────────────────────────
+box(3, 0.95, 2, 0xfff9c4, 0, 0.47, 0);
+box(3, 0.1, 2, 0xf9a825, 0, 1.0, 0);
+box(0.45, 0.38, 0.06, 0x1a237e, 0.6, 1.22, -0.4);
+box(0.45, 0.38, 0.06, 0x1a237e, -0.6, 1.22, -0.4);
+
+// ── reception desk (waiting room) ────────────────────────────────────────────
+box(3, 0.9, 0.9, 0x8d6e63, -8, 0.45, -9);
+box(3, 0.1, 0.9, 0x6d4c41, -8, 0.95, -9);
+box(0.5, 0.4, 0.06, 0x37474f, -8, 0.85, -8.55);
+
+// ── waiting chairs ────────────────────────────────────────────────────────────
+[-10,-7.5,-5].forEach(x => [-7.5,-6].forEach(z => {
+  box(0.75, 0.4, 0.65, 0x1976d2, x, 0.22, z);
+  box(0.75, 0.65, 0.1, 0x1976d2, x, 0.52, z - 0.28);
+}));
+
+// ── discharge desk + chairs ───────────────────────────────────────────────────
+box(2.5, 0.9, 0.9, 0x795548, 10, 0.45, -4.5);
+box(2.5, 0.1, 0.9, 0x6d4c41, 10, 0.95, -4.5);
+[4,7].forEach(x => [-7.5,-6].forEach(z => {
+  box(0.75, 0.4, 0.65, 0x388e3c, x, 0.22, z);
+  box(0.75, 0.65, 0.1, 0x388e3c, x, 0.52, z - 0.28);
+}));
+
+// ── general ward beds ─────────────────────────────────────────────────────────
+[[-12,4.5],[-9,4.5],[-5,4.5],[-12,7],[-9,7],[-5,7]].forEach(([x,z]) => {
+  box(1.9, 0.28, 1, 0xddddee, x, 0.14, z);
+  box(1.7, 0.14, 0.85, 0xfff8f8, x, 0.35, z);
+  box(0.55, 0.08, 0.75, 0xfff9c4, x + 0.6, 0.42, z);
+  const head = new T.Mesh(
+    new T.SphereGeometry(0.17, 8, 8),
+    new T.MeshLambertMaterial({ color: 0xffccbc })
+  );
+  head.position.set(x + 0.65, 0.56, z);
+  scene.add(head);
+  box(0.8, 0.13, 0.5, 0xffccbc, x - 0.05, 0.48, z);
+});
+
+// ── ICU beds + monitors + IV poles ───────────────────────────────────────────
+const glowMat = new T.MeshLambertMaterial({ color: 0x00e676, emissive: 0x00e676, emissiveIntensity: 0.9 });
+[[4,4.5],[8,4.5],[12,4.5],[4,7],[8,7],[12,7]].forEach(([x,z]) => {
+  box(1.9, 0.28, 1, 0xcccccc, x, 0.14, z);
+  box(1.7, 0.14, 0.85, 0xfce4ec, x, 0.35, z);
+  box(0.55, 0.08, 0.75, 0xfff9c4, x + 0.6, 0.42, z);
+  const head = new T.Mesh(
+    new T.SphereGeometry(0.17, 8, 8),
+    new T.MeshLambertMaterial({ color: 0xffccbc })
+  );
+  head.position.set(x + 0.65, 0.56, z);
+  scene.add(head);
+  // IV pole
+  box(0.05, 1.8, 0.05, 0xbdbdbd, x - 1.1, 0.9, z);
+  box(0.55, 0.05, 0.05, 0xbdbdbd, x - 1.1, 1.8, z);
+  const bag = new T.Mesh(
+    new T.SphereGeometry(0.13, 8, 8),
+    new T.MeshLambertMaterial({ color: 0xfff9c4, transparent: true, opacity: 0.8 })
+  );
+  bag.position.set(x - 1.1, 1.92, z);
+  scene.add(bag);
+  // Monitor
+  box(0.42, 0.36, 0.08, 0x1a1a2e, x + 1.1, 1.0, z);
+  const screen = new T.Mesh(new T.PlaneGeometry(0.32, 0.26), glowMat);
+  screen.position.set(x + 1.1, 1.0, z - 0.05);
+  scene.add(screen);
+  const pl = new T.PointLight(0x00ff88, 0.25, 2);
+  pl.position.set(x + 1.1, 0.9, z);
+  scene.add(pl);
+});
+
+// ── animated people ──────────────────────────────────────────────────────────
+const people = [];
+
+function makePerson(bodyCol, waypoints, speed) {
+  const g = new T.Group();
+  const bm = new T.MeshLambertMaterial({ color: bodyCol });
+  const sm = new T.MeshLambertMaterial({ color: 0xffccbc });
+
+  // leg pivot groups (pivot at hip so rotation looks natural)
+  const lpL = new T.Group(); lpL.position.set(-0.1, 0.55, 0); g.add(lpL);
+  const lpR = new T.Group(); lpR.position.set( 0.1, 0.55, 0); g.add(lpR);
+  const legL = new T.Mesh(new T.BoxGeometry(0.12, 0.55, 0.12), bm);
+  legL.position.y = -0.275; lpL.add(legL);
+  const legR = new T.Mesh(new T.BoxGeometry(0.12, 0.55, 0.12), bm);
+  legR.position.y = -0.275; lpR.add(legR);
+
+  // arm pivot groups
+  const apL = new T.Group(); apL.position.set(-0.24, 1.0, 0); g.add(apL);
+  const apR = new T.Group(); apR.position.set( 0.24, 1.0, 0); g.add(apR);
+  const armL = new T.Mesh(new T.BoxGeometry(0.1, 0.44, 0.1), bm);
+  armL.position.y = -0.22; apL.add(armL);
+  const armR = new T.Mesh(new T.BoxGeometry(0.1, 0.44, 0.1), bm);
+  armR.position.y = -0.22; apR.add(armR);
+
+  // torso + head
+  const torso = new T.Mesh(new T.BoxGeometry(0.34, 0.5, 0.2), bm);
+  torso.position.set(0, 0.78, 0); g.add(torso);
+  const head = new T.Mesh(new T.SphereGeometry(0.16, 8, 8), sm);
+  head.position.set(0, 1.18, 0); g.add(head);
+
+  g.position.set(waypoints[0][0], 0, waypoints[0][1]);
+  scene.add(g);
+
+  people.push({
+    g, lpL, lpR, apL, apR,
+    waypoints,
+    wpIdx: 0,
+    progress: Math.random(), // stagger starts
+    speed: speed || (0.018 + Math.random() * 0.008),
+    phase: Math.random() * Math.PI * 2
+  });
+}
+
+// Doctors - green scrubs, patrol corridors + wards
+makePerson(0x2e7d32, [[-13,0],[13,0],[13,-0.8],[-13,-0.8]], 0.022);          // corridor patrol
+makePerson(0x2e7d32, [[-5,3],[-5,8.5],[-13,8.5],[-13,3],[-9,3],[-9,8]], 0.018); // general rounds
+makePerson(0x1565c0, [[5,3],[5,8.5],[13,8.5],[13,3],[9,3],[9,8]], 0.016);    // ICU rounds
+makePerson(0x1565c0, [[-1,-1],[1,-1],[1,1],[-1,1]], 0.02);                   // nurses station
+makePerson(0x2e7d32, [[0,0],[-13,0],[-13,-9],[-8,-9],[-8,0],[0,9],[13,9],[13,0]], 0.024); // full tour
+
+// Patients - pale blue gown, waiting area loop
+makePerson(0xb3d9ff, [[-13,-2],[-2,-2],[-2,-10],[-13,-10]], 0.012);
+makePerson(0xb3d9ff, [[-11,-3],[-4,-3],[-4,-9],[-11,-9]], 0.014);
+makePerson(0xb3d9ff, [[-8,-2.5],[-3,-2.5],[-3,-8.5],[-8,-8.5]], 0.011);
+
+// Discharge patients - green gown
+makePerson(0xc8e6c9, [[2,-2],[13,-2],[13,-10],[2,-10]], 0.013);
+makePerson(0xc8e6c9, [[3,-3],[12,-3],[12,-9],[3,-9]], 0.015);
+
+// ── labels ────────────────────────────────────────────────────────────────────
+const labDiv = document.getElementById('labels');
+const labs = [
+  ['Waiting Room',  0x1565c0, -7, -5],
+  ['Discharge',     0x2e7d32,  7, -5],
+  ['General Ward',  0x388e3c, -7,  5],
+  ['ICU',           0xc62828,  7,  5],
+].map(([name, col, x, z]) => {
+  const hex = '#' + col.toString(16).padStart(6,'0');
+  const el = document.createElement('div');
+  el.textContent = name;
+  el.style.cssText = 'position:absolute;font:bold 12px sans-serif;padding:3px 9px;border-radius:5px;background:rgba(255,255,255,.88);color:' + hex + ';border-left:3px solid ' + hex + ';box-shadow:0 1px 4px rgba(0,0,0,.2)';
+  labDiv.appendChild(el);
+  return { el, pos: new T.Vector3(x, wallH + 0.4, z) };
+});
+
+// ── orbit ─────────────────────────────────────────────────────────────────────
+let down = false, ox = 0, oy = 0, theta = 0.4, phi = 0.72, r = 36, bt = 0.4, bp = 0.72;
+const dom = renderer.domElement;
+dom.addEventListener('mousedown', e => { down=true; ox=e.clientX; oy=e.clientY; bt=theta; bp=phi; });
+dom.addEventListener('mousemove', e => {
+  if (!down) return;
+  theta = bt + (e.clientX - ox) * 0.004;
+  phi = Math.max(0.18, Math.min(1.45, bp - (e.clientY - oy) * 0.004));
+});
+dom.addEventListener('mouseup', () => down = false);
+dom.addEventListener('wheel', e => { r = Math.max(8, Math.min(58, r + e.deltaY * 0.06)); }, { passive: true });
+
+(function loop() {
+  requestAnimationFrame(loop);
+
+  // Animate people
+  people.forEach(p => {
+    const wps = p.waypoints;
+    const from = wps[p.wpIdx];
+    const next = wps[(p.wpIdx + 1) % wps.length];
+    const dx = next[0] - from[0], dz = next[1] - from[1];
+    const dist = Math.sqrt(dx*dx + dz*dz) || 1;
+
+    p.progress += p.speed / dist;
+    if (p.progress >= 1) {
+      p.progress -= 1;
+      p.wpIdx = (p.wpIdx + 1) % wps.length;
+    }
+
+    const t = p.progress;
+    const x = from[0] + dx * t;
+    const z = from[1] + dz * t;
+    p.g.position.set(x, Math.abs(Math.sin(p.phase)) * 0.04, z);
+    if (dx !== 0 || dz !== 0) p.g.rotation.y = Math.atan2(dx, dz);
+
+    // Limb swing
+    p.phase += 0.18;
+    const sw = Math.sin(p.phase) * 0.45;
+    p.lpL.rotation.x =  sw;
+    p.lpR.rotation.x = -sw;
+    p.apL.rotation.x = -sw * 0.5;
+    p.apR.rotation.x =  sw * 0.5;
+  });
+
+  cam.position.set(r*Math.sin(theta)*Math.sin(phi), r*Math.cos(phi), r*Math.cos(theta)*Math.sin(phi));
+  cam.lookAt(0, 1, 0);
+  labs.forEach(({ el, pos }) => {
+    const v = pos.clone().project(cam);
+    el.style.transform = 'translate(-50%,-50%) translate(' + ((v.x+1)/2*W) + 'px,' + ((-v.y+1)/2*H) + 'px)';
+    el.style.opacity = v.z < 1 ? '1' : '0';
+  });
+  renderer.render(scene, cam);
+})();
+</script>
+</body>
+</html>
