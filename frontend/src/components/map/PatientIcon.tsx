@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import ReactDOM from 'react-dom';
+import { motion } from 'framer-motion';
 import type { Patient, Severity } from '../../types/simulation';
 
 const SEVERITY_COLOR: Record<Severity, string> = {
@@ -83,35 +84,31 @@ export const PatientIcon: React.FC<Props> = ({ patient, cellSize, isSelected, on
           P
         </text>
       </motion.g>
-      {/* Tooltip */}
-      <AnimatePresence>
-        {tooltip && (
-          <foreignObject x={cx + 14} y={cy - 40} width={160} height={90} style={{ overflow: 'visible' }}>
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              style={{
-                background: 'rgba(17,24,39,0.95)',
-                color: 'white',
-                borderRadius: 6,
-                padding: '6px 8px',
-                fontSize: 11,
-                lineHeight: 1.5,
-                pointerEvents: 'none',
-                whiteSpace: 'nowrap',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-              }}
-            >
-              <div style={{ fontWeight: 700 }}>{patient.name}</div>
-              <div>Severity: <span style={{ color: SEVERITY_COLOR[patient.severity] }}>{patient.severity}</span></div>
-              <div>Condition: {patient.condition}</div>
-              <div style={{ opacity: 0.8, fontSize: 10 }}>{patient.diagnosis}</div>
-              <div style={{ opacity: 0.7, fontSize: 10 }}>Wait: {patient.wait_time_ticks} ticks</div>
-            </motion.div>
-          </foreignObject>
-        )}
-      </AnimatePresence>
+      {/* Tooltip — portal renders above all SVG elements */}
+      {tooltip && ReactDOM.createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            left: tooltip.x + 14,
+            top: tooltip.y - 40,
+            zIndex: 9999,
+            background: 'rgba(17,24,39,0.95)',
+            color: 'white',
+            borderRadius: 6,
+            padding: '6px 8px',
+            fontSize: 11,
+            lineHeight: 1.5,
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          }}
+        >
+          <div style={{ fontWeight: 700 }}>{patient.name}</div>
+          <div>Sev: <span style={{ color: SEVERITY_COLOR[patient.severity] }}>{patient.severity}</span> · {patient.condition}</div>
+          <div style={{ opacity: 0.75, fontSize: 10 }}>{patient.diagnosis}</div>
+        </div>,
+        document.body
+      )}
     </motion.g>
   );
 };
