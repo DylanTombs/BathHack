@@ -192,10 +192,10 @@ async def _handle_command(
             # Accept both legacy and explicit names from clients.
             if "tick_speed_seconds" in raw_config:
                 tick_seconds = float(raw_config["tick_speed_seconds"])
-                engine.config.tick_interval_seconds = max(0.1, min(5.0, tick_seconds))
+                engine.config.tick_interval_seconds = max(0.05, min(10.0, tick_seconds))
             if "tick_interval_seconds" in raw_config:
                 tick_seconds = float(raw_config["tick_interval_seconds"])
-                engine.config.tick_interval_seconds = max(0.1, min(5.0, tick_seconds))
+                engine.config.tick_interval_seconds = max(0.05, min(10.0, tick_seconds))
             await manager.send_to(ws, {
                 "type": "config_ack",
                 "config": raw_config,
