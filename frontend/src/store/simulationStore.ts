@@ -36,6 +36,7 @@ interface SimulationStore {
   appendEvents: (events: SimEvent[]) => void;
   setConnected: (v: boolean) => void;
   seedHistory: (history: MetricsHistoryPoint[]) => void;
+  applyCommandAck: (isRunning: boolean) => void;
 }
 
 export const useSimulationStore = create<SimulationStore>((set, get) => ({
@@ -88,4 +89,5 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
 
   setConnected: (v) => set({ connected: v }),
   seedHistory: (history) => set({ metricsHistory: history }),
+  applyCommandAck: (isRunning) => set({ isRunning }),
 }));
