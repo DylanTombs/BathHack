@@ -2,6 +2,13 @@ import React from 'react';
 import { useUIStore } from '../../store/uiStore';
 import { useSimulationStore } from '../../store/simulationStore';
 
+/** "Alice Johnson" → "Alice J."  |  single name → unchanged */
+function shortName(name: string): string {
+  const parts = name.trim().split(/\s+/);
+  if (parts.length >= 2) return `${parts[0]} ${parts[parts.length - 1][0]}.`;
+  return parts[0];
+}
+
 const SEVERITY_COLOR: Record<string, string> = {
   low: 'bg-green-100 text-green-800',
   medium: 'bg-amber-100 text-amber-800',
@@ -26,7 +33,7 @@ interface Props {
 }
 
 export const EntityDetailPanel: React.FC<Props> = ({ requestExplanation }) => {
-  const { selectedEntityId, selectedEntityType, explanationText, explanationLoading, clearSelection } = useUIStore();
+  const { selectedEntityId, selectedEntityType, explanationText, explanationLoading, clearSelection, selectEntity } = useUIStore();
   const { patients, doctors } = useSimulationStore();
 
   if (!selectedEntityId || !selectedEntityType) return null;
@@ -70,11 +77,19 @@ export const EntityDetailPanel: React.FC<Props> = ({ requestExplanation }) => {
             </div>
             <div className="text-xs space-y-1 text-gray-600">
               <div>Location: <span className="font-medium text-gray-800">{patient.location.replace('_', ' ')}</span></div>
-              <div>Arrived tick: <span className="font-mono">{patient.arrived_at_tick}</span></div>
-              <div>Wait time: <span className="font-mono">{patient.wait_time_ticks} ticks</span></div>
-              {patient.assigned_doctor_id && (
-                <div>Assigned Dr: <span className="font-mono">#{patient.assigned_doctor_id}</span></div>
-              )}
+              {patient.assigned_doctor_id != null && (() => {
+                const doc = doctors.find(d => d.id === patient.assigned_doctor_id);
+                return doc ? (
+                  <div>Doctor:{' '}
+                    <button
+                      onClick={() => selectEntity(doc.id, 'doctor')}
+                      className="font-medium text-indigo-600 hover:underline"
+                    >
+                      {shortName(doc.name)}
+                    </button>
+                  </div>
+                ) : null;
+              })()}
             </div>
             {patient.last_event_explanation && (
               <div className="text-xs bg-blue-50 border border-blue-100 rounded p-2 text-blue-700">
@@ -105,7 +120,21 @@ export const EntityDetailPanel: React.FC<Props> = ({ requestExplanation }) => {
             </div>
             {doctor.assigned_patient_ids.length > 0 && (
               <div className="text-xs text-gray-500">
-                Treating: {doctor.assigned_patient_ids.map(id => `#${id}`).join(', ')}
+                Treating:{' '}
+                {doctor.assigned_patient_ids.map((id, i) => {
+                  const p = patients.find(p => p.id === id);
+                  return p ? (
+                    <span key={id}>
+                      {i > 0 && ', '}
+                      <button
+                        onClick={() => selectEntity(p.id, 'patient')}
+                        className="font-medium text-indigo-600 hover:underline"
+                      >
+                        {shortName(p.name)}
+                      </button>
+                    </span>
+                  ) : null;
+                })}
               </div>
             )}
             {doctor.last_decision_reason && (
@@ -118,11 +147,20 @@ export const EntityDetailPanel: React.FC<Props> = ({ requestExplanation }) => {
                     </span>
                   )}
                 </div>
-                {doctor.last_decision_patient_id != null && (
-                  <div className="text-xs font-medium text-violet-600">
-                    → Patient #{doctor.last_decision_patient_id}
-                  </div>
-                )}
+                {doctor.last_decision_patient_id != null && (() => {
+                  const p = patients.find(p => p.id === doctor.last_decision_patient_id);
+                  return p ? (
+                    <div className="text-xs font-medium text-violet-600">
+                      →{' '}
+                      <button
+                        onClick={() => selectEntity(p.id, 'patient')}
+                        className="hover:underline"
+                      >
+                        {shortName(p.name)}
+                      </button>
+                    </div>
+                  ) : null;
+                })()}
                 <div className="text-xs text-violet-900 leading-relaxed">
                   {doctor.last_decision_reason}
                 </div>
