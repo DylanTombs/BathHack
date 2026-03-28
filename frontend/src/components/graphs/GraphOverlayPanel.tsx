@@ -203,7 +203,7 @@ const TABS: { id: RightPanelTab; label: string }[] = [
 ];
 
 export const GraphOverlayPanel: React.FC = () => {
-  const { rightPanelTab, activePreset, setRightPanelTab, setPreset } = useUIStore();
+  const { rightPanelTab, activePreset, setRightPanelTab, setPreset, rightPanelVisible, toggleRightPanel } = useUIStore();
   const { metricsHistory, events } = useSimulationStore();
   const data = useMemo(() => metricsHistory.slice(-60), [metricsHistory]);
   const preset = PRESETS.find(p => p.id === activePreset) ?? PRESETS[0];
@@ -216,13 +216,24 @@ export const GraphOverlayPanel: React.FC = () => {
   }, [events, rightPanelTab]);
 
   return (
-    <div
+    <>
+      {/* Right panel toggle button */}
+      <button
+        onClick={toggleRightPanel}
+        className="fixed z-50 bg-white border border-gray-200 shadow-md rounded-full w-11 h-11 flex items-center justify-center text-xl font-bold text-gray-500 hover:text-gray-800 hover:shadow-lg transition-all"
+        style={{ top: '140px', right: rightPanelVisible ? '432px' : '24px' }}
+        title={rightPanelVisible ? 'Hide panel' : 'Show panel'}
+      >
+        {rightPanelVisible ? '›' : '‹'}
+      </button>
+
+    {rightPanelVisible && <div
       className="fixed z-40 bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col"
       style={{
-        top: '72px',
+        top: '140px',
+        bottom: '24px',
         right: '24px',
         width: '400px',
-        height: 'calc(100vh - 96px)',
       }}
     >
       {/* Tab bar */}
@@ -279,7 +290,7 @@ export const GraphOverlayPanel: React.FC = () => {
 
       {/* Event Log tab */}
       {rightPanelTab === 'events' && (
-        <div className="flex-1 overflow-y-auto p-2 space-y-1">
+        <div className="flex-1 overflow-y-auto scrollbar-hidden p-2 space-y-1">
           {events.length === 0 ? (
             <p className="text-xs text-gray-400 text-center pt-8">Waiting for events…</p>
           ) : (
@@ -290,6 +301,7 @@ export const GraphOverlayPanel: React.FC = () => {
           <div ref={eventBottomRef} />
         </div>
       )}
-    </div>
+    </div>}
+    </>
   );
 };

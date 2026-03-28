@@ -14,3 +14,10 @@ body {
   width: 100%;
   min-height: 100vh;
 }
+
+.scrollbar-hidden {
+  scrollbar-width: none; /* Firefox */
+}
+.scrollbar-hidden::-webkit-scrollbar {
+  display: none; /* Chrome / Safari */
+}

@@ -16,6 +16,10 @@ interface UIStore {
   rightPanelTab: RightPanelTab;
   activePreset: GraphPreset;
 
+  // Panel visibility
+  leftPanelVisible: boolean;
+  rightPanelVisible: boolean;
+
   selectEntity: (id: number, type: 'patient' | 'doctor') => void;
   clearSelection: () => void;
   setExplanation: (text: string | null) => void;
@@ -23,6 +27,8 @@ interface UIStore {
   setSurgeActive: (v: boolean) => void;
   setRightPanelTab: (tab: RightPanelTab) => void;
   setPreset: (preset: GraphPreset) => void;
+  toggleLeftPanel: () => void;
+  toggleRightPanel: () => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -37,6 +43,8 @@ export const useUIStore = create<UIStore>()(
 
       rightPanelTab: 'metrics',
       activePreset: 'overview',
+      leftPanelVisible: true,
+      rightPanelVisible: true,
 
       selectEntity: (id, type) => set({
         selectedEntityId: id,
@@ -55,6 +63,8 @@ export const useUIStore = create<UIStore>()(
       setSurgeActive: (v) => set({ isSurgeActive: v }),
       setRightPanelTab: (tab) => set({ rightPanelTab: tab }),
       setPreset: (preset) => set({ activePreset: preset }),
+      toggleLeftPanel: () => set((s) => ({ leftPanelVisible: !s.leftPanelVisible })),
+      toggleRightPanel: () => set((s) => ({ rightPanelVisible: !s.rightPanelVisible })),
     }),
     {
       name: 'hospital-sim-ui',

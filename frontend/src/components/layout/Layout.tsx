@@ -11,7 +11,7 @@ import { useWebSocket } from '../../hooks/useWebSocket';
 
 export const Layout: React.FC = () => {
   const { connected, tick } = useSimulationStore();
-  const { isPanelOpen } = useUIStore();
+  const { isPanelOpen, leftPanelVisible, toggleLeftPanel } = useUIStore();
   const { requestExplanation } = useWebSocket();
 
   return (
@@ -35,18 +35,35 @@ export const Layout: React.FC = () => {
       {/* Metrics banner */}
       <MetricsBanner />
 
-      {/* Main layout: left controls | map */}
-      <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-          <div className="w-80 shrink-0 p-4 space-y-3 overflow-y-auto border-r border-gray-200 bg-white flex flex-col" style={{height: '100%'}}>
+      {/* Main layout: map fills space, fixed panels float over */}
+      <div className="flex-1 overflow-auto p-4" style={{ minHeight: 0 }}>
+        <HospitalMap />
+      </div>
+
+      {/* Left panel — fixed bubble */}
+      {leftPanelVisible && (
+        <div
+          className="fixed z-40 bg-white rounded-xl shadow-2xl border border-gray-200 flex flex-col"
+          style={{ top: '140px', bottom: '24px', left: '24px', width: '400px' }}
+        >
+          <div className="p-4 space-y-3 overflow-y-auto scrollbar-hidden flex flex-col h-full">
             <ControlPanel />
             <div className="flex-1 flex flex-col justify-end">
               <AISummary />
             </div>
           </div>
-        <div className="flex-1 overflow-auto p-4">
-          <HospitalMap />
         </div>
-    	  </div>
+      )}
+
+      {/* Left panel toggle button */}
+      <button
+        onClick={toggleLeftPanel}
+        className="fixed z-50 bg-white border border-gray-200 shadow-md rounded-full w-11 h-11 flex items-center justify-center text-xl font-bold text-gray-500 hover:text-gray-800 hover:shadow-lg transition-all"
+        style={{ top: '140px', left: leftPanelVisible ? '432px' : '24px' }}
+        title={leftPanelVisible ? 'Hide controls' : 'Show controls'}
+      >
+        {leftPanelVisible ? '‹' : '›'}
+      </button>
 
       {/* Entity detail — fixed overlay, left of the graph panel */}
       {isPanelOpen && (
