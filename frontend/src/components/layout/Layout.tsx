@@ -17,12 +17,11 @@ export const Layout: React.FC = () => {
   return (
     <div className="h-full bg-gray-100 flex flex-col overflow-hidden">
       {/* Header */}
-      <header className="bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm">
+      <header className="relative bg-white border-b border-gray-200 px-6 py-3 flex items-center justify-between shadow-sm">
         <div className="flex items-center gap-3">
-          <span className="text-xl">🏥</span>
-          <h1 className="text-lg font-bold text-gray-900">Hospital Simulation</h1>
           <span className="text-xs text-gray-400">Agent-Based · LLM-Driven</span>
         </div>
+        <h1 className="text-lg font-bold text-gray-900 absolute left-1/2 -translate-x-1/2">Hospital Simulation</h1>
         <div className="flex items-center gap-3">
           <span className="text-xs text-gray-400 font-mono">Tick: {tick}</span>
           <div className="flex items-center gap-2">
