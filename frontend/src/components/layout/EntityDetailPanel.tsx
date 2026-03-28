@@ -1,7 +1,6 @@
 import React from 'react';
 import { useUIStore } from '../../store/uiStore';
 import { useSimulationStore } from '../../store/simulationStore';
-import { useWebSocket } from '../../hooks/useWebSocket';
 
 const SEVERITY_COLOR: Record<string, string> = {
   low: 'bg-green-100 text-green-800',
@@ -22,10 +21,13 @@ const CONDITION_COLOR: Record<string, string> = {
   worsening: 'text-red-600',
 };
 
-export const EntityDetailPanel: React.FC = () => {
+interface Props {
+  requestExplanation: (entityType: 'patient' | 'doctor', id: number) => void;
+}
+
+export const EntityDetailPanel: React.FC<Props> = ({ requestExplanation }) => {
   const { selectedEntityId, selectedEntityType, explanationText, explanationLoading, clearSelection } = useUIStore();
   const { patients, doctors } = useSimulationStore();
-  const { requestExplanation } = useWebSocket();
 
   if (!selectedEntityId || !selectedEntityType) return null;
 
