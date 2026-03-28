@@ -27,6 +27,7 @@ from simulation.types import (
     SimEvent,
     PatientContext,
     PatientUpdate,
+    PatientSpec,
 )
 
 if TYPE_CHECKING:
@@ -73,6 +74,18 @@ _TREATMENT_TICKS: dict[str, tuple[int, int]] = {
 
 # Severity arrival distribution: 60% low, 30% medium, 10% critical
 _SEVERITY_WEIGHTS = [("low", 0.60), ("medium", 0.30), ("critical", 0.10)]
+
+
+def _make_random_spec(force_severity: Optional[Severity] = None) -> PatientSpec:
+    """Produce a random PatientSpec using the existing static pools (fallback path)."""
+    sev: Severity = force_severity if force_severity else _random_severity()
+    return PatientSpec(
+        name=random.choice(_FIRST_NAMES),
+        age=random.randint(18, 90),
+        severity=sev,
+        diagnosis=random.choice(_DIAGNOSES[sev]),
+        backstory=None,
+    )
 
 
 def _random_severity() -> Severity:
@@ -398,6 +411,43 @@ class PatientAgent:
             grid_x=grid_x,
             grid_y=grid_y,
             last_event_explanation=None,
+            backstory=None,
         )
 
         return PatientAgent(patient, llm_callback=llm_callback)
+
+    @classmethod
+    def create_from_spec(
+        cls,
+        patient_id: int,
+        tick: int,
+        hospital: "Hospital",
+        spec: PatientSpec,
+        llm_callback=None,
+    ) -> "PatientAgent":
+        """
+        Create a PatientAgent from an LLM-generated PatientSpec.
+        Grid position and treatment duration are determined locally.
+        """
+        duration = random.randint(*_TREATMENT_TICKS[spec.severity])
+        grid_x, grid_y = hospital.claim_waiting_slot(patient_id)
+
+        patient = Patient(
+            id=patient_id,
+            name=spec.name,
+            severity=spec.severity,
+            condition="stable",
+            location="waiting",
+            assigned_doctor_id=None,
+            arrived_at_tick=tick,
+            treatment_started_tick=None,
+            treatment_duration_ticks=duration,
+            wait_time_ticks=0,
+            age=spec.age,
+            diagnosis=spec.diagnosis,
+            grid_x=grid_x,
+            grid_y=grid_y,
+            last_event_explanation=None,
+            backstory=spec.backstory,
+        )
+        return cls(patient, llm_callback=llm_callback)

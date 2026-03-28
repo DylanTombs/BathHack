@@ -33,12 +33,15 @@ from simulation.types import (
     PatientContext,
     PatientUpdate,
     SimEvent,
+    ArrivalContext,
+    PatientSpec,
 )
 from llm.prompts import (
     build_doctor_decision_prompt,
     build_event_explanation_prompt,
     build_explain_entity_prompt,
     build_patient_reeval_prompt,
+    build_patient_arrival_prompt,
 )
 
 logger = logging.getLogger(__name__)
@@ -70,6 +73,7 @@ class OpenRouterLLMClient:
 
     MAX_TOKENS_DECISION = 256      # small structured JSON response
     MAX_TOKENS_EXPLANATION = 512   # paragraph of natural language
+    MAX_TOKENS_PATIENT_BATCH = 1024  # ~6 patients at ~150 tokens each
     TIMEOUT_SECONDS = 10.0         # OpenRouter may have higher latency than direct API
     MAX_RETRIES = 2                # retries only on RateLimitError
 
@@ -180,6 +184,79 @@ class OpenRouterLLMClient:
             )
             self._fallback_count += 1
             return f"Unable to generate explanation for {entity_type} #{entity_id}."
+
+    async def generate_patient_batch(
+        self,
+        context: ArrivalContext,
+        fallback_fn: Callable[[], list[PatientSpec]],
+    ) -> list[PatientSpec]:
+        """
+        Ask the LLM to generate a batch of arriving patients for this tick.
+
+        LLM decides the count and generates coherent patient identities
+        (name, age, diagnosis, severity, backstory) informed by time-of-day
+        and hospital state. Falls back to fallback_fn() on any failure.
+        """
+        prompt = build_patient_arrival_prompt(context)
+        raw = await self._call_with_fallback(
+            prompt=prompt,
+            max_tokens=self.MAX_TOKENS_PATIENT_BATCH,
+            fallback_fn=lambda: None,
+        )
+        if raw is None:
+            return fallback_fn()
+        return self._parse_patient_batch(raw, fallback_fn)
+
+    def _parse_patient_batch(
+        self,
+        raw: str,
+        fallback_fn: Callable[[], list[PatientSpec]],
+    ) -> list[PatientSpec]:
+        """
+        Parse LLM JSON array response into a list of PatientSpec.
+
+        Per-entry errors are skipped silently; a completely unparseable
+        response triggers fallback_fn().
+        """
+        try:
+            text = raw.strip()
+            fence = re.search(r"```(?:json)?\s*([\s\S]*?)```", text, re.IGNORECASE)
+            if fence:
+                text = fence.group(1).strip()
+            data = json.loads(text)
+            if not isinstance(data, list):
+                logger.warning("LLM patient batch: expected list, got %s", type(data))
+                return fallback_fn()
+        except json.JSONDecodeError as exc:
+            logger.warning("Patient batch JSON parse failed: %s | raw=%r", exc, raw[:300])
+            return fallback_fn()
+
+        specs: list[PatientSpec] = []
+        for i, item in enumerate(data):
+            try:
+                if not isinstance(item, dict):
+                    continue
+                sev = item.get("severity", "low")
+                if sev not in _VALID_SEVERITIES:
+                    sev = "low"
+                backstory = str(item.get("backstory", ""))[:300].strip() or None
+                specs.append(PatientSpec(
+                    name=str(item.get("name", f"Patient {i + 1}"))[:60].strip(),
+                    age=max(1, min(99, int(item.get("age", 40)))),
+                    severity=sev,  # type: ignore[arg-type]
+                    diagnosis=str(item.get("diagnosis", "Unknown"))[:120].strip(),
+                    backstory=backstory,
+                ))
+            except Exception as exc:
+                logger.debug("Skipping malformed patient spec at index %d: %s", i, exc)
+                continue
+
+        if len(specs) > 20:
+            logger.warning("LLM generated %d patients — capping at 20", len(specs))
+            specs = specs[:20]
+
+        logger.debug("LLM generated %d patient(s) for tick %d", len(specs), context.tick)
+        return specs
 
     # ── Internal: API call layer ──────────────────────────────────────────────
 

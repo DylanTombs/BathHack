@@ -23,6 +23,7 @@ export interface Patient {
   grid_x: number;
   grid_y: number;
   last_event_explanation: string | null;
+  backstory: string | null;
 }
 
 export interface Doctor {

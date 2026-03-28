@@ -9,7 +9,7 @@ Imported by: llm/client.py
 
 from __future__ import annotations
 
-from simulation.types import DoctorContext, PatientContext, SimEvent
+from simulation.types import DoctorContext, PatientContext, SimEvent, ArrivalContext
 
 
 # ─── Doctor Decision Prompt ────────────────────────────────────────────────────
@@ -215,3 +215,45 @@ Hospital context:
 {summary}
 
 Focus on: current status, key risk factors or positives, and any immediate concerns."""
+
+
+# ─── Patient Arrival Prompt ────────────────────────────────────────────────────
+
+def build_patient_arrival_prompt(ctx: ArrivalContext) -> str:
+    """
+    Prompt for LLM to generate a batch of arriving patients for this tick.
+    LLM decides the count and generates coherent patient identities
+    informed by time-of-day, day-of-week, and hospital state.
+    """
+    time_str = f"{ctx.hour_of_day:02d}:00"
+    surge_note = " [MASS CASUALTY SURGE ACTIVE]" if ctx.surge_active else ""
+    max_count = max(1, int(ctx.arrival_rate_hint * 2))
+
+    return f"""You are generating new patient arrivals for a hospital A&E simulation.
+Simulated time: {ctx.day_name} {time_str}{surge_note}
+Hospital status: queue={ctx.current_queue_length} waiting, general ward={ctx.general_ward_occupancy_pct:.0f}% full, ICU={ctx.icu_occupancy_pct:.0f}% full
+Scenario: {ctx.scenario}. Expected arrival rate this tick: {ctx.arrival_rate_hint:.1f}
+
+REAL-WORLD A&E ARRIVAL PATTERNS — use these to decide count and patient types:
+- 00:00–05:00: 0–1 patients (alcohol intoxication, trauma, mental health crisis, assault)
+- 06:00–09:00: 1–2 patients (cardiac events, diabetic emergencies, morning accidents)
+- 09:00–17:00: 2–4 patients (GP referrals, workplace injuries, chest pain, abdominal pain)
+- 17:00–22:00: 3–5 patients (post-work accidents, sports injuries, DIY injuries)
+- Friday/Saturday 22:00–03:00: 4–6 patients (high trauma, assault, alcohol, overdose)
+- Monday morning: elevated cardiac events, stress-related presentations
+- Surge active: generate more patients, skew heavily toward critical severity
+
+Generate a realistic batch of patients arriving RIGHT NOW at this A&E (0 to {max_count} patients).
+Each patient must be a coherent person — realistic full name, age appropriate for diagnosis, specific clinical diagnosis, and a brief backstory explaining why they are here today.
+
+Respond with a JSON array ONLY — no commentary, no markdown fences, no extra text:
+[
+  {{
+    "name": "<realistic first name and surname>",
+    "age": <integer 1–99>,
+    "severity": "<low|medium|critical>",
+    "diagnosis": "<specific clinical diagnosis, not just a symptom>",
+    "backstory": "<1–2 sentences: what happened and why they came to A&E today, grounded in the time/day>"
+  }}
+]
+An empty array [] is valid if zero patients arrive (e.g. quiet early morning)."""

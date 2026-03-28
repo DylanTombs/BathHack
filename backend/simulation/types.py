@@ -32,6 +32,8 @@ class Patient:
     grid_y: float
     # LLM explanation for last condition change (optional)
     last_event_explanation: Optional[str] = None
+    # AI-generated reason for attending A&E (optional)
+    backstory: Optional[str] = None
 
 # ─── Doctor ───────────────────────────────────────────────────────────────────
 
@@ -188,3 +190,26 @@ class PatientContext:
     ward_occupancy_pct: float
     doctor_available: bool
     current_tick: int
+
+# ─── Patient Arrival Types (LLM-driven generation) ────────────────────────────
+
+@dataclass
+class ArrivalContext:
+    tick: int
+    hour_of_day: int            # tick % 24  (0 = midnight)
+    day_of_week: int            # (tick // 24) % 7  (0 = Monday)
+    day_name: str               # "Monday" … "Sunday"
+    scenario: str               # "normal" | "surge" | "shortage"
+    surge_active: bool
+    current_queue_length: int
+    general_ward_occupancy_pct: float
+    icu_occupancy_pct: float
+    arrival_rate_hint: float    # base_rate * surge_multiplier
+
+@dataclass
+class PatientSpec:
+    name: str
+    age: int
+    severity: Severity
+    diagnosis: str
+    backstory: Optional[str]   # 1–2 sentence reason for attending A&E

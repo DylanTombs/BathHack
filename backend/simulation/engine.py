@@ -30,9 +30,11 @@ from simulation.types import (
     SimEvent,
     SimulationState,
     MetricsSnapshot,
+    ArrivalContext,
+    PatientSpec,
 )
 from simulation.hospital import Hospital
-from simulation.patient import PatientAgent
+from simulation.patient import PatientAgent, _make_random_spec
 from simulation.doctor import DoctorAgent
 from simulation.queue_manager import PriorityQueue
 from simulation.metrics import MetricsCollector
@@ -142,7 +144,7 @@ class SimulationEngine:
         self._update_scenario_timers()
 
         # ── Step 1: Arrivals ───────────────────────────────────────────────
-        new_patients = self._generate_arrivals()
+        new_patients = await self._generate_arrivals()
         for pa in new_patients:
             self.patients[pa.patient.id] = pa
             self.queue.push(pa)
@@ -378,38 +380,67 @@ class SimulationEngine:
                 if self._scenario == "shortage":
                     self._scenario = "normal"
 
-    def _generate_arrivals(self) -> list[PatientAgent]:
+    async def _generate_arrivals(self) -> list[PatientAgent]:
         """
-        Draw from Poisson(arrival_rate * surge_multiplier).
-        During surge: use _SURGE_SEVERITY_WEIGHTS for severity distribution.
+        Generate new patient arrivals for this tick.
+
+        Primary path (LLM): calls generate_patient_batch with time/hospital context;
+        LLM decides count and generates coherent patient identities.
+
+        Fallback path (rule-based): Poisson draw + static-pool random assembly,
+        identical to the original behaviour.
         """
         rate = self._arrival_rate * self._surge_arrival_multiplier
-        # Poisson draw via sum of Geometric rv (classic approximation using random)
-        n_arrivals = _poisson_draw(rate)
+        poisson_count = _poisson_draw(rate)
+
+        _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday",
+                      "Friday", "Saturday", "Sunday"]
+
+        def _fallback_specs() -> list[PatientSpec]:
+            specs = []
+            for _ in range(poisson_count):
+                force_sev = None
+                if self._surge_ticks_remaining > 0:
+                    r, cum = random.random(), 0.0
+                    for sev, w in _SURGE_SEVERITY_WEIGHTS:
+                        cum += w
+                        if r < cum:
+                            force_sev = sev  # type: ignore[assignment]
+                            break
+                specs.append(_make_random_spec(force_sev))
+            return specs
+
+        generate_fn = getattr(self.llm_callback, "generate_patient_batch", None)
+        if generate_fn is None:
+            specs = _fallback_specs()
+        else:
+            metrics = self.get_metrics()
+            hour = self._tick % 24
+            day = (self._tick // 24) % 7
+            ctx = ArrivalContext(
+                tick=self._tick,
+                hour_of_day=hour,
+                day_of_week=day,
+                day_name=_DAY_NAMES[day],
+                scenario=self._scenario,
+                surge_active=self._surge_ticks_remaining > 0,
+                current_queue_length=metrics.current_queue_length,
+                general_ward_occupancy_pct=metrics.general_ward_occupancy_pct,
+                icu_occupancy_pct=metrics.icu_occupancy_pct,
+                arrival_rate_hint=rate,
+            )
+            specs = await generate_fn(ctx, _fallback_specs)
 
         arrivals = []
-        for _ in range(n_arrivals):
+        for spec in specs:
             pid = self._next_patient_id()
-            # During surge: force higher severity distribution
-            force_sev = None
-            if self._surge_ticks_remaining > 0:
-                r = random.random()
-                cumulative = 0.0
-                for sev, weight in _SURGE_SEVERITY_WEIGHTS:
-                    cumulative += weight
-                    if r < cumulative:
-                        force_sev = sev  # type: ignore[assignment]
-                        break
-
-            pa = PatientAgent.create_new(
+            arrivals.append(PatientAgent.create_from_spec(
                 patient_id=pid,
                 tick=self._tick,
                 hospital=self.hospital,
+                spec=spec,
                 llm_callback=self.llm_callback,
-                force_severity=force_sev,
-            )
-            arrivals.append(pa)
-
+            ))
         return arrivals
 
     async def _update_patients(self) -> list[SimEvent]:
