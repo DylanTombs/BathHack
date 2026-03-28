@@ -567,7 +567,7 @@ class SimulationEngine:
         events: list[SimEvent] = []
         active = [
             pa for pa in self.patients.values()
-            if pa.patient.location not in ("discharged", "deceased")
+            if pa.patient.location != "discharged"
         ]
         tasks = [pa.tick(self._tick, self.hospital) for pa in active]
         results = await asyncio.gather(*tasks)
@@ -578,7 +578,7 @@ class SimulationEngine:
         return events
 
     def _move_to_deceased(self, pa: PatientAgent) -> None:
-        """Free all resources for a patient who has just died."""
+        """Free all resources for a patient who has just died and remove them immediately."""
         p = pa.patient
         self.hospital.free_bed(p.id)
         self.hospital.release_waiting_slot(p.id)
@@ -589,6 +589,7 @@ class SimulationEngine:
                 break
         self.queue.remove(p.id)
         self.metrics.record_death(pa, self._tick)
+        del self.patients[p.id]
 
     async def _run_doctor_assignments(self) -> list[SimEvent]:
         """
@@ -834,22 +835,18 @@ class SimulationEngine:
         Phase A: Remove patients whose discharge stay has expired (clean up from sim).
         Phase B: Auto-discharge patients whose treatment is complete.
         """
-        # Phase A: expire patients from discharge zone OR deceased zone
+        # Phase A: expire patients from discharge zone
         for pa in list(self.patients.values()):
             p = pa.patient
             if p.location == "discharged" and p.discharge_started_tick is not None:
                 elapsed = self._tick - p.discharge_started_tick
                 if elapsed >= p.discharge_stay_ticks:
                     del self.patients[p.id]
-            elif p.location == "deceased" and p.deceased_tick is not None:
-                # Show skull for exactly 1 tick then remove
-                if self._tick - p.deceased_tick >= 1:
-                    del self.patients[p.id]
 
         # Phase B: discharge patients whose treatment is complete
         for pa in list(self.patients.values()):
             p = pa.patient
-            if p.location in ("discharged", "deceased"):
+            if p.location == "discharged":
                 continue
             if p.treatment_started_tick is None or p.assigned_doctor_id is None:
                 continue
