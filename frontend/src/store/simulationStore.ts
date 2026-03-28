@@ -1,0 +1,91 @@
+import { create } from 'zustand';
+import type {
+  SimulationState, Patient, Doctor, Metrics,
+  SimEvent, WardName, WardState
+} from '../types/simulation';
+
+export interface MetricsHistoryPoint {
+  tick: number;
+  general_ward_occupancy_pct: number;
+  icu_occupancy_pct: number;
+  current_queue_length: number;
+  throughput_last_10_ticks: number;
+  critical_patients_waiting: number;
+  doctor_utilisation_pct: number;
+}
+
+interface SimulationStore {
+  // Core state
+  tick: number;
+  isRunning: boolean;
+  scenario: string;
+  patients: Patient[];
+  doctors: Doctor[];
+  metrics: Metrics | null;
+  wards: Record<WardName, WardState>;
+  events: SimEvent[];
+
+  // History for charts (last 100 ticks)
+  metricsHistory: MetricsHistoryPoint[];
+
+  // WebSocket status
+  connected: boolean;
+
+  // Actions
+  applyState: (state: SimulationState) => void;
+  appendEvents: (events: SimEvent[]) => void;
+  setConnected: (v: boolean) => void;
+  seedHistory: (history: MetricsHistoryPoint[]) => void;
+}
+
+export const useSimulationStore = create<SimulationStore>((set, get) => ({
+  tick: 0,
+  isRunning: false,
+  scenario: 'normal',
+  patients: [],
+  doctors: [],
+  metrics: null,
+  wards: {} as Record<WardName, WardState>,
+  events: [],
+  metricsHistory: [],
+  connected: false,
+
+  applyState: (state: SimulationState) => {
+    set({
+      tick: state.tick,
+      isRunning: state.is_running,
+      scenario: state.scenario,
+      patients: state.patients,
+      doctors: state.doctors,
+      metrics: state.metrics,
+      wards: state.wards,
+    });
+    // Append new events, keep last 50
+    const prev = get().events;
+    const combined = [...prev, ...state.events].slice(-50);
+    set({ events: combined });
+    // Append to history
+    if (state.metrics) {
+      const { metrics } = state;
+      const point: MetricsHistoryPoint = {
+        tick: metrics.tick,
+        general_ward_occupancy_pct: metrics.general_ward_occupancy_pct,
+        icu_occupancy_pct: metrics.icu_occupancy_pct,
+        current_queue_length: metrics.current_queue_length,
+        throughput_last_10_ticks: metrics.throughput_last_10_ticks,
+        critical_patients_waiting: metrics.critical_patients_waiting,
+        doctor_utilisation_pct: metrics.doctor_utilisation_pct,
+      };
+      const hist = [...get().metricsHistory, point].slice(-100);
+      set({ metricsHistory: hist });
+    }
+  },
+
+  appendEvents: (events) => {
+    const prev = get().events;
+    set({ events: [...prev, ...events].slice(-50) });
+  },
+
+  setConnected: (v) => set({ connected: v }),
+  seedHistory: (history) => set({ metricsHistory: history }),
+}));
