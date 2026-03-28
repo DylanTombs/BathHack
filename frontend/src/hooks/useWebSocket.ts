@@ -82,6 +82,8 @@ export function useWebSocket() {
   const startSim = useCallback(() => sendCommand({ command: 'start' }), [sendCommand]);
   const pauseSim = useCallback(() => sendCommand({ command: 'pause' }), [sendCommand]);
   const resetSim = useCallback(() => sendCommand({ command: 'reset' }), [sendCommand]);
+  const addDoctor = useCallback((specialty: string) => sendCommand({ command: 'add_doctor', specialty }), [sendCommand]);
+  const removeDoctor = useCallback(() => sendCommand({ command: 'remove_doctor' }), [sendCommand]);
 
   const updateConfig = useCallback((config: Partial<ScenarioConfig>) => {
     sendCommand({ command: 'update_config', config });
@@ -96,5 +98,7 @@ export function useWebSocket() {
     resetSim,
     updateConfig,
     requestExplanation,
+    addDoctor,
+    removeDoctor,
   };
 }

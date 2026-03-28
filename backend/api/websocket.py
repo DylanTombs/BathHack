@@ -201,6 +201,25 @@ async def _handle_command(
                 "tick": engine.current_tick,
             })
 
+    elif command == "add_doctor":
+        specialty = msg.get("specialty", "General")
+        engine.add_doctor(specialty)
+        await manager.send_to(ws, {
+            "type": "command_ack",
+            "command": "add_doctor",
+            "is_running": engine.is_running,
+            "tick": engine.current_tick,
+        })
+
+    elif command == "remove_doctor":
+        engine.remove_doctor()
+        await manager.send_to(ws, {
+            "type": "command_ack",
+            "command": "remove_doctor",
+            "is_running": engine.is_running,
+            "tick": engine.current_tick,
+        })
+
     elif command == "explain_patient":
         target_id = msg.get("target_id")
         explanation = await _get_explanation("patient", target_id, engine)

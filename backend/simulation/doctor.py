@@ -278,6 +278,49 @@ class DoctorAgent:
     # ── Factory ───────────────────────────────────────────────────────────────
 
     @staticmethod
+    def create_with_specialty(
+        doctor_id: int,
+        specialty: str,
+        llm_callback=None,
+    ) -> "DoctorAgent":
+        """
+        Create a doctor with an explicitly chosen specialty.
+        Used for the +/- doctor controls on the frontend.
+        """
+        name = _DOCTOR_NAMES[(doctor_id - 1) % len(_DOCTOR_NAMES)]
+
+        zone_map = {
+            "Triage":      "waiting",
+            "General":     "general_ward",
+            "ICU":         "icu",
+            "Emergency":   "general_ward",
+            "Cardiology":  "icu",
+        }
+        zone = zone_map.get(specialty, "general_ward")
+        x0, x1, y0, y1 = _WARD_ZONES[zone]
+
+        # Spread position within zone using id as a jitter seed
+        import random as _r
+        _r.seed(doctor_id * 31)
+        grid_x = round(x0 + _r.uniform(0.2, 0.8) * (x1 - x0), 2)
+        grid_y = round((y0 + y1) / 2 + _r.uniform(-0.8, 0.8), 2)
+        _r.seed()  # restore global seed
+
+        doctor = Doctor(
+            id=doctor_id,
+            name=name,
+            assigned_patient_ids=[],
+            capacity=DOCTOR_CAPACITY,
+            workload="light",
+            specialty=specialty,
+            grid_x=grid_x,
+            grid_y=grid_y,
+            is_available=True,
+            decisions_made=0,
+        )
+        return DoctorAgent(doctor, llm_callback=llm_callback)
+
+    @staticmethod
     def create_initial(
         doctor_id: int,
         num_doctors: int,

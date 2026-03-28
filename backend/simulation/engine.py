@@ -61,25 +61,27 @@ METRICS_HISTORY_BUFFER = 100
 # Severity distribution during a surge (overrides normal 60/30/10)
 _SURGE_SEVERITY_WEIGHTS = [("low", 0.20), ("medium", 0.30), ("critical", 0.50)]
 
-# Simulated calendar — tick 0 = Monday 06:00, each tick = 1 simulated hour
-_SIM_START_DAY = 0   # 0=Monday
-_SIM_START_HOUR = 6  # 06:00
+# Simulated calendar — tick 0 = Monday 06:00, each tick = 15 simulated minutes
+_SIM_START_DAY = 0    # 0=Monday
+_SIM_START_HOUR = 6   # 06:00
+_SIM_MINS_PER_TICK = 15
 _DAY_NAMES = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
 
 
 def _sim_datetime(tick: int) -> str:
     """Return a human-readable simulated datetime string for a given tick."""
-    total_hours = _SIM_START_HOUR + tick
-    hour = total_hours % 24
-    day = (_SIM_START_DAY + total_hours // 24) % 7
-    return f"{_DAY_NAMES[day]} {hour:02d}:00"
+    total_minutes = _SIM_START_HOUR * 60 + tick * _SIM_MINS_PER_TICK
+    hour = (total_minutes // 60) % 24
+    minute = total_minutes % 60
+    day = (_SIM_START_DAY + total_minutes // (24 * 60)) % 7
+    return f"{_DAY_NAMES[day]} {hour:02d}:{minute:02d}"
 
 
 def _sim_hour_day(tick: int) -> tuple[int, int, str]:
     """Return (hour_of_day, day_of_week, day_name) for a given tick."""
-    total_hours = _SIM_START_HOUR + tick
-    hour = total_hours % 24
-    day = (_SIM_START_DAY + total_hours // 24) % 7
+    total_minutes = _SIM_START_HOUR * 60 + tick * _SIM_MINS_PER_TICK
+    hour = (total_minutes // 60) % 24
+    day = (_SIM_START_DAY + total_minutes // (24 * 60)) % 7
     return hour, day, _DAY_NAMES[day]
 
 
@@ -262,6 +264,22 @@ class SimulationEngine:
             self.doctors = self.doctors[: config.num_doctors]
 
         self._arrival_rate = config.arrival_rate_per_tick
+
+    def add_doctor(self, specialty: str = "General") -> None:
+        """Add a new doctor with the given specialty mid-simulation."""
+        new_id = max((d.doctor.id for d in self.doctors), default=0) + 1
+        da = DoctorAgent.create_with_specialty(new_id, specialty, self.llm_callback)
+        self.doctors.append(da)
+        logger.info("Added %s doctor (id=%d). Total doctors: %d", specialty, new_id, len(self.doctors))
+
+    def remove_doctor(self) -> None:
+        """Remove the most recently added doctor (keep at least 1)."""
+        if len(self.doctors) <= 1:
+            logger.warning("Cannot remove last doctor")
+            return
+        removed = self.doctors.pop()
+        logger.info("Removed %s (id=%d). Total doctors: %d",
+                    removed.doctor.name, removed.doctor.id, len(self.doctors))
 
     def trigger_surge(self) -> None:
         """
