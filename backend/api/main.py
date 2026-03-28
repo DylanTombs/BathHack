@@ -4,17 +4,8 @@ Hospital Simulation — FastAPI application entry point.
 Start server (from backend/ directory):
     uvicorn api.main:app --reload --port 8000
 
-Integration notes (post-merge):
-    # Replace mock engine with real simulation engine (Agent 1):
-    from simulation.engine import SimulationEngine
-    engine = SimulationEngine(config, llm_callback=llm_client)
-
-    # Inject LLM explainer (Agent 2):
-    from llm import AnthropicLLMClient, ExplainerService
-    llm_client = AnthropicLLMClient(config.anthropic_api_key, config.llm_model)
-    explainer = ExplainerService(llm_client)
-    engine = SimulationEngine(config, llm_callback=llm_client)
-    engine.explainer = explainer   # used by websocket._get_explanation()
+Requires ANTHROPIC_API_KEY in backend/.env (copy from .env.example).
+LLM calls fall back to rule-based logic if the key is empty.
 """
 from __future__ import annotations
 
@@ -26,9 +17,10 @@ from fastapi import FastAPI, WebSocket as FastAPIWebSocket
 from fastapi.middleware.cors import CORSMiddleware
 
 from config import load_config
+from simulation.engine import SimulationEngine
+from llm import AnthropicLLMClient, ExplainerService
 from api.websocket import WebSocketManager, websocket_endpoint
 from api.routes import router
-from api.mock_engine import MockSimulationEngine  # swapped post-merge
 
 logger = logging.getLogger(__name__)
 
@@ -40,10 +32,14 @@ config = load_config()
 
 ws_manager = WebSocketManager()
 
-# ── Production (post Agent-1 merge): ─────────────────────────────────────────
-# from simulation.engine import SimulationEngine
-# engine = SimulationEngine(config, llm_callback=None)  # or with llm_callback
-engine = MockSimulationEngine()
+llm_client = AnthropicLLMClient(
+    api_key=config.anthropic_api_key,
+    model=config.llm_model,
+)
+explainer = ExplainerService(llm_client)
+
+engine = SimulationEngine(config, llm_callback=llm_client)
+engine.explainer = explainer  # used by websocket._get_explanation()
 
 
 # ─── Simulation tick loop ─────────────────────────────────────────────────────

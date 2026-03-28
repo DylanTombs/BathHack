@@ -105,6 +105,14 @@ class SimulationEngine:
 
     # ── Public API ────────────────────────────────────────────────────────────
 
+    @property
+    def is_running(self) -> bool:
+        return self._running
+
+    @property
+    def current_tick(self) -> int:
+        return self._tick
+
     def start(self) -> None:
         self._running = True
 
@@ -310,6 +318,10 @@ class SimulationEngine:
             throughput_last_10_ticks=0,
             critical_patients_waiting=0,
         )
+
+    def get_metrics_history(self) -> list[MetricsSnapshot]:
+        """Return last 100 MetricsSnapshot entries (used by API to seed frontend charts)."""
+        return self.metrics.get_history()
 
     def get_state(self) -> SimulationState:
         """Build and return current SimulationState without advancing tick."""
