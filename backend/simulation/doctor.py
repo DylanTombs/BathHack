@@ -70,7 +70,6 @@ class DoctorAgent:
     def __init__(self, doctor: Doctor, llm_callback=None) -> None:
         self.doctor = doctor
         self._llm_callback = llm_callback
-        self._last_llm_tick: int = -999
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -119,7 +118,6 @@ class DoctorAgent:
         if self._should_call_llm_for_decision(tick, candidates, hospital):
             chosen = await self._llm_decide(candidates, tick, hospital)
             if chosen is not None:
-                self._last_llm_tick = tick
                 return chosen
             # Fall through to rule-based
 
@@ -151,11 +149,8 @@ class DoctorAgent:
         candidates: list["PatientAgent"],
         hospital: "Hospital",
     ) -> bool:
-        """Always use LLM when available, with a 1-tick cooldown to avoid
-        multiple calls within the same tick for the same doctor."""
-        if self._llm_callback is None:
-            return False
-        return tick - self._last_llm_tick >= 1
+        """Use LLM for every decision when available."""
+        return self._llm_callback is not None
 
     async def _llm_decide(
         self,
