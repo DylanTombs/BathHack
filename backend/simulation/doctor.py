@@ -116,11 +116,6 @@ class DoctorAgent:
         if not candidates:
             return None
 
-        # Waiting-room triage must be deterministic and fair across ticks:
-        # highest severity first, then oldest waiting patient (FIFO).
-        if self.doctor.ward == "waiting":
-            return self._rule_based_pick(candidates)
-
         if self._should_call_llm_for_decision(tick, candidates, hospital):
             chosen = await self._llm_decide(candidates, tick, hospital)
             if chosen is not None:
@@ -244,7 +239,15 @@ class DoctorAgent:
 
         # Store last decision on the doctor for UI display
         d.decisions_made += 1
-        d.last_decision_reason = explanation or None
+        if explanation is None:
+            sev = p.severity
+            wait = p.wait_time_ticks
+            dest = action if action in ("general_ward", "icu", "discharge") else "treatment"
+            explanation = (
+                f"Rule-based triage: selected {sev} severity patient (waited {wait} ticks). "
+                f"Routed to {dest.replace('_', ' ')} — highest priority in queue by severity then wait time."
+            )
+        d.last_decision_reason = explanation
         d.last_decision_confidence = confidence
         d.last_decision_patient_id = p.id
 

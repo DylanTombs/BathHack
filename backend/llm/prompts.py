@@ -60,27 +60,34 @@ def build_doctor_decision_prompt(ctx: DoctorContext) -> str:
 
     if doctor_ward == "waiting":
         role_desc = "Triage doctor in the Waiting Area"
-        action_guide = """MANDATORY ROUTING RULES — follow these strictly:
-  CRITICAL severity → MUST use "icu" (or "general_ward" if ICU is marked FULL above) — NEVER "treat" in waiting
-  MEDIUM severity   → MUST use "general_ward" — NEVER "treat" in waiting
-  LOW severity only → may use "treat" here in waiting, or "discharge" if very minor
+        action_guide = """YOUR TRIAGE PHILOSOPHY — offload, offload, offload:
+  Your job is to clear the waiting room by routing patients to the right place, NOT to treat them yourself.
+  Keep only the genuinely trivial cases here; everything else should move on.
+
+ROUTING LOGIC:
+  CRITICAL severity → "icu" immediately (or "general_ward" if ICU is FULL — never keep critical in waiting)
+  MEDIUM severity   → "general_ward" to free up triage capacity (never treat medium here)
+  LOW severity      → your call: treat briefly here if quick and simple, or "discharge" if truly minor (sprain, minor cut, mild cold)
+  Any low-severity patient who does NOT need a bed and can safely go home → "discharge" is preferred over "treat"
 
 AVAILABLE ACTIONS:
-  "treat"         — treat in waiting (LOW severity ONLY; max 5 patients)
-  "general_ward"  — route to General Ward (medium severity; low needing a bed)
-  "icu"           — route to ICU (critical or rapidly deteriorating)
-  "discharge"     — send home (very minor, no admission needed)
+  "treat"         — treat here in waiting (LOW severity only, genuinely needs brief treatment before safe to go)
+  "general_ward"  — admit to General Ward (medium severity; low patients needing a proper bed)
+  "icu"           — escalate to ICU (critical or rapidly deteriorating)
+  "discharge"     — send home now (trivial complaint, no admission required)
 
 REQUIRED for treat / general_ward / icu:
-  "treatment_ticks": your clinical estimate of how many ticks treatment will take
-    Low severity treated here: 1–3 ticks
-    General ward admission: 3–8 ticks depending on diagnosis
-    ICU admission: 5–15 ticks for serious/critical cases
+  "treatment_ticks": your clinical estimate
+    Brief triage treatment: 1–3 ticks
+    General ward admission: 3–8 ticks
+    ICU admission: 5–15 ticks
 
 For "discharge":
-  - discharge_stay_ticks: 0 = straight home (trivial complaint), 1–4 = brief observation
-  - discharge_severity: patient's severity at the point of discharge
-  - discharge_condition: patient's condition at discharge (usually "stable" or "improving")"""
+  - discharge_stay_ticks: 0 = straight home, 1–2 = brief observation first
+  - discharge_severity: patient severity at discharge
+  - discharge_condition: usually "stable" or "improving"
+
+Think out loud in "reason" — e.g. "I'm routing her to ICU immediately, she's critical with chest pain and every minute counts" or "He's got a mild sprain, doesn't need a bed, I'm discharging him with advice"."""
         json_schema = (
             '{"target_patient_id": <int>, "action": "<treat|general_ward|icu|discharge>",'
             ' "reason": "<first-person>", "confidence": <0.0-1.0>,'
