@@ -20,6 +20,10 @@ interface UIStore {
   leftPanelVisible: boolean;
   rightPanelVisible: boolean;
 
+  // Selected entity screen position (page coordinates, updated every frame)
+  entityScreenX: number | null;
+  entityScreenY: number | null;
+
   selectEntity: (id: number, type: 'patient' | 'doctor') => void;
   clearSelection: () => void;
   setExplanation: (text: string | null) => void;
@@ -29,6 +33,7 @@ interface UIStore {
   setPreset: (preset: GraphPreset) => void;
   toggleLeftPanel: () => void;
   toggleRightPanel: () => void;
+  setEntityScreenPos: (x: number | null, y: number | null) => void;
 }
 
 export const useUIStore = create<UIStore>()(
@@ -45,6 +50,8 @@ export const useUIStore = create<UIStore>()(
       activePreset: 'overview',
       leftPanelVisible: true,
       rightPanelVisible: true,
+      entityScreenX: null,
+      entityScreenY: null,
 
       selectEntity: (id, type) => set({
         selectedEntityId: id,
@@ -65,6 +72,7 @@ export const useUIStore = create<UIStore>()(
       setPreset: (preset) => set({ activePreset: preset }),
       toggleLeftPanel: () => set((s) => ({ leftPanelVisible: !s.leftPanelVisible })),
       toggleRightPanel: () => set((s) => ({ rightPanelVisible: !s.rightPanelVisible })),
+      setEntityScreenPos: (x, y) => set({ entityScreenX: x, entityScreenY: y }),
     }),
     {
       name: 'hospital-sim-ui',
