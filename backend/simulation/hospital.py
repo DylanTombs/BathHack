@@ -322,6 +322,30 @@ class Hospital:
             self._next_bed_id += 1
         self._wards["icu"].capacity += count
 
+    def remove_general_beds(self, count: int) -> None:
+        """Remove up to `count` unoccupied general ward beds (keep at least 1)."""
+        ward = self._wards["general_ward"]
+        free_beds = [b for b in ward.beds if b.occupied_by_patient_id is None]
+        to_remove = min(count, len(free_beds), ward.capacity - 1)
+        if to_remove <= 0:
+            return
+        for bed in free_beds[-to_remove:]:
+            ward.beds.remove(bed)
+            self._beds.remove(bed)
+        ward.capacity -= to_remove
+
+    def remove_icu_beds(self, count: int) -> None:
+        """Remove up to `count` unoccupied ICU beds (keep at least 1)."""
+        ward = self._wards["icu"]
+        free_beds = [b for b in ward.beds if b.occupied_by_patient_id is None]
+        to_remove = min(count, len(free_beds), ward.capacity - 1)
+        if to_remove <= 0:
+            return
+        for bed in free_beds[-to_remove:]:
+            ward.beds.remove(bed)
+            self._beds.remove(bed)
+        ward.capacity -= to_remove
+
     def get_zone_center(self, ward: WardName) -> tuple[float, float]:
         """Return the centre coordinate of a ward's zone (for doctor placement)."""
         x0, x1, y0, y1 = _ZONES[ward]
