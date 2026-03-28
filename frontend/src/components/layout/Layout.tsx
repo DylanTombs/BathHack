@@ -1,5 +1,5 @@
 import React from 'react';
-import { HospitalMap } from '../map/HospitalMap';
+import { HospitalScene3D } from '../map/HospitalScene3D';
 import { ControlPanel } from '../controls/ControlPanel';
 import { MetricsBanner } from './MetricsBanner';
 import { EntityDetailPanel } from './EntityDetailPanel';
@@ -43,8 +43,8 @@ export const Layout: React.FC = () => {
               <AISummary />
             </div>
           </div>
-        <div className="flex-1 overflow-auto p-4">
-          <HospitalMap />
+        <div className="flex-1 p-4" style={{ minHeight: 0 }}>
+          <HospitalScene3D />
         </div>
     	  </div>
 
