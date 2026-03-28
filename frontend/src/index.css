@@ -8,11 +8,22 @@ body {
   margin: 0;
   padding: 0;
   background: #f3f4f6;
+  zoom: 0.75;
 }
 
 #root {
   width: 100%;
-  min-height: 100vh;
+  height: calc(100vh / 0.75);
+}
+
+.map-container {
+  display: flex;
+  flex-direction: column;
+  overflow: hidden;
+}
+.map-container iframe {
+  flex: 1;
+  min-height: 0;
 }
 
 .scrollbar-hidden {

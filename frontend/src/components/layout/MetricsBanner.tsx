@@ -22,7 +22,7 @@ const MetricCard: React.FC<MetricCardProps> = ({ label, value, highlight, highli
   }, [value]);
 
   return (
-    <div className={`flex flex-col items-center px-4 py-2 rounded-lg transition-colors ${
+    <div className={`flex-1 flex flex-col items-center px-2 py-2 rounded-lg transition-colors ${
       flash ? highlightColor : 'bg-white'
     } ${highlight ? 'ring-1 ring-red-300' : ''}`}>
       <span className="text-xs text-gray-500 uppercase font-medium">{label}</span>
@@ -36,8 +36,8 @@ export const MetricsBanner: React.FC = () => {
 
   return (
     <div className="bg-gray-50 border-b border-gray-200 px-4 py-2">
-      <div className="flex items-center gap-2 overflow-x-auto">
-        <div className="flex flex-col items-center px-4 py-2 rounded-lg bg-indigo-50 ring-1 ring-indigo-200 min-w-30">
+      <div className="flex items-center gap-2">
+        <div className="flex-1 flex flex-col items-center px-2 py-2 rounded-lg bg-indigo-50 ring-1 ring-indigo-200">
           <span className="text-xs text-indigo-500 uppercase font-medium">Sim Time</span>
           <span className="text-lg font-bold text-indigo-700 whitespace-nowrap">{simDatetime}</span>
         </div>
