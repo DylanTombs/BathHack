@@ -1,12 +1,30 @@
-import React, { useState } from 'react';
+import React, { useState, useCallback } from 'react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSimulationStore } from '../../store/simulationStore';
 
 export const ControlPanel: React.FC = () => {
-  const { isRunning, scenario } = useSimulationStore();
+  const { isRunning, scenario, connected } = useSimulationStore();
   const { startSim, pauseSim, resetSim, triggerSurge, triggerShortage, triggerRecovery, updateConfig } = useWebSocket();
   const [arrivalRate, setArrivalRate] = useState(1.5);
   const [numDoctors, setNumDoctors] = useState(4);
+  const [pending, setPending] = useState(false);
+
+  const handleStartPause = useCallback(() => {
+    if (pending || !connected) return;
+    setPending(true);
+    if (isRunning) {
+      pauseSim();
+    } else {
+      startSim();
+    }
+    // Clear pending after 1.5s — ack or next sim_state will have updated isRunning by then
+    setTimeout(() => setPending(false), 1500);
+  }, [pending, connected, isRunning, pauseSim, startSim]);
+
+  const handleReset = useCallback(() => {
+    if (!connected) return;
+    resetSim();
+  }, [connected, resetSim]);
 
   return (
     <div className="bg-white rounded-xl border border-gray-200 p-4 space-y-4 shadow-sm">
@@ -15,18 +33,22 @@ export const ControlPanel: React.FC = () => {
         <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Simulation</h3>
         <div className="flex gap-2">
           <button
-            onClick={isRunning ? pauseSim : startSim}
-            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors ${
-              isRunning
+            onClick={handleStartPause}
+            disabled={pending || !connected}
+            className={`flex-1 py-2 px-3 rounded-lg text-sm font-medium transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${
+              pending
+                ? 'bg-gray-100 text-gray-400'
+                : isRunning
                 ? 'bg-amber-100 text-amber-700 hover:bg-amber-200'
                 : 'bg-green-100 text-green-700 hover:bg-green-200'
             }`}
           >
-            {isRunning ? '⏸ Pause' : '▶ Start'}
+            {pending ? '...' : isRunning ? '⏸ Pause' : '▶ Start'}
           </button>
           <button
-            onClick={resetSim}
-            className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200"
+            onClick={handleReset}
+            disabled={!connected}
+            className="px-3 py-2 rounded-lg text-sm font-medium bg-gray-100 text-gray-600 hover:bg-gray-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             ↺ Reset
           </button>

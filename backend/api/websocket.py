@@ -147,14 +147,32 @@ async def _handle_command(
 
     if command == "start":
         engine.start()
+        await manager.send_to(ws, {
+            "type": "command_ack",
+            "command": "start",
+            "is_running": engine.is_running,
+            "tick": engine.current_tick,
+        })
 
     elif command == "pause":
         engine.pause()
+        await manager.send_to(ws, {
+            "type": "command_ack",
+            "command": "pause",
+            "is_running": engine.is_running,
+            "tick": engine.current_tick,
+        })
 
     elif command == "reset":
         engine.reset()
         state = engine.get_state()
         await manager.broadcast_state(state)
+        await manager.send_to(ws, {
+            "type": "command_ack",
+            "command": "reset",
+            "is_running": engine.is_running,
+            "tick": engine.current_tick,
+        })
 
     elif command == "trigger_surge":
         engine.trigger_surge()

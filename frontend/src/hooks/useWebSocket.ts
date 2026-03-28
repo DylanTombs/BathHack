@@ -10,7 +10,7 @@ const RECONNECT_DELAY_MS = 2000;
 export function useWebSocket() {
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { applyState, setConnected, seedHistory } = useSimulationStore();
+  const { applyState, setConnected, seedHistory, applyCommandAck } = useSimulationStore();
   const { setExplanation, setExplanationLoading } = useUIStore();
 
   const connect = useCallback(() => {
@@ -32,6 +32,8 @@ export function useWebSocket() {
           setExplanation((msg as ExplanationResponse).explanation);
         } else if (msg.type === 'metrics_history') {
           seedHistory(msg.snapshots as MetricsHistoryPoint[]);
+        } else if (msg.type === 'command_ack') {
+          applyCommandAck(msg.is_running as boolean);
         }
       } catch (e) {
         console.error('[WS] Parse error', e);
@@ -48,7 +50,7 @@ export function useWebSocket() {
       console.error('[WS] Error', err);
       ws.current?.close();
     };
-  }, [applyState, setConnected, seedHistory, setExplanation]);
+  }, [applyState, setConnected, seedHistory, setExplanation, applyCommandAck]);
 
   useEffect(() => {
     connect();
@@ -61,6 +63,8 @@ export function useWebSocket() {
   const sendCommand = useCallback((payload: object) => {
     if (ws.current?.readyState === WebSocket.OPEN) {
       ws.current.send(JSON.stringify(payload));
+    } else {
+      console.warn('[WS] Command dropped — not connected:', payload);
     }
   }, []);
 
