@@ -6,6 +6,7 @@ import { EntityDetailPanel } from './EntityDetailPanel';
 import { GraphOverlayPanel } from '../graphs/GraphOverlayPanel';
 import { useSimulationStore } from '../../store/simulationStore';
 import { useUIStore } from '../../store/uiStore';
+import { AISummary } from './AISummary';
 
 export const Layout: React.FC = () => {
   const { connected, tick } = useSimulationStore();
@@ -34,13 +35,16 @@ export const Layout: React.FC = () => {
 
       {/* Main layout: left controls | map */}
       <div className="flex flex-1 overflow-hidden" style={{ minHeight: 0 }}>
-        <div className="w-48 shrink-0 p-4 space-y-3 overflow-y-auto border-r border-gray-200 bg-white">
-          <ControlPanel />
-        </div>
+          <div className="w-80 shrink-0 p-4 space-y-3 overflow-y-auto border-r border-gray-200 bg-white flex flex-col" style={{height: '100%'}}>
+            <ControlPanel />
+            <div className="flex-1 flex flex-col justify-end">
+              <AISummary />
+            </div>
+          </div>
         <div className="flex-1 overflow-auto p-4">
           <HospitalMap />
         </div>
-      </div>
+    	  </div>
 
       {/* Entity detail — fixed overlay, left of the graph panel */}
       {isPanelOpen && (
