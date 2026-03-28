@@ -1,5 +1,6 @@
 import React, { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
+import ReactDOM from 'react-dom';
+import { motion } from 'framer-motion';
 import type { Doctor, WorkloadLevel } from '../../types/simulation';
 
 const WORKLOAD_COLOR: Record<WorkloadLevel, string> = {
@@ -17,7 +18,7 @@ interface Props {
 }
 
 export const DoctorIcon: React.FC<Props> = ({ doctor, cellSize, isSelected, onClick }) => {
-  const [tooltip, setTooltip] = useState(false);
+  const [tooltip, setTooltip] = useState<{ x: number; y: number } | null>(null);
   const cx = (doctor.grid_x + 0.5) * cellSize;
   const cy = (doctor.grid_y + 0.5) * cellSize;
   const color = WORKLOAD_COLOR[doctor.workload];
@@ -29,8 +30,8 @@ export const DoctorIcon: React.FC<Props> = ({ doctor, cellSize, isSelected, onCl
       exit={{ opacity: 0, scale: 0 }}
       transition={{ type: 'spring', stiffness: 100, damping: 18 }}
       onClick={onClick}
-      onMouseEnter={() => setTooltip(true)}
-      onMouseLeave={() => setTooltip(false)}
+      onMouseEnter={(e) => setTooltip({ x: e.clientX, y: e.clientY })}
+      onMouseLeave={() => setTooltip(null)}
       style={{ cursor: 'pointer' }}
     >
       {/* Diamond shape */}
@@ -65,34 +66,31 @@ export const DoctorIcon: React.FC<Props> = ({ doctor, cellSize, isSelected, onCl
           ))}
         </g>
       )}
-      {/* Tooltip */}
-      <AnimatePresence>
-        {tooltip && (
-          <foreignObject x={26} y={-10} width={160} height={80} style={{ overflow: 'visible' }}>
-            <motion.div
-              initial={{ opacity: 0, y: -4 }}
-              animate={{ opacity: 1, y: 0 }}
-              exit={{ opacity: 0 }}
-              style={{
-                background: 'rgba(17,24,39,0.95)',
-                color: 'white',
-                borderRadius: 6,
-                padding: '6px 8px',
-                fontSize: 11,
-                lineHeight: 1.5,
-                pointerEvents: 'none',
-                whiteSpace: 'nowrap',
-                boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
-              }}
-            >
-              <div style={{ fontWeight: 700 }}>{doctor.name}</div>
-              <div>Specialty: {doctor.specialty}</div>
-              <div>Workload: <span style={{ color }}>{doctor.workload}</span></div>
-              <div>{doctor.assigned_patient_ids.length}/{doctor.capacity} patients</div>
-            </motion.div>
-          </foreignObject>
-        )}
-      </AnimatePresence>
+      {/* Tooltip — portal renders above all SVG elements */}
+      {tooltip && ReactDOM.createPortal(
+        <div
+          style={{
+            position: 'fixed',
+            left: tooltip.x + 14,
+            top: tooltip.y - 40,
+            zIndex: 9999,
+            background: 'rgba(17,24,39,0.95)',
+            color: 'white',
+            borderRadius: 6,
+            padding: '6px 8px',
+            fontSize: 11,
+            lineHeight: 1.5,
+            pointerEvents: 'none',
+            whiteSpace: 'nowrap',
+            boxShadow: '0 2px 8px rgba(0,0,0,0.4)',
+          }}
+        >
+          <div style={{ fontWeight: 700 }}>{doctor.name}</div>
+          <div>Workload: <span style={{ color }}>{doctor.workload}</span> · {doctor.assigned_patient_ids.length}/{doctor.capacity} pts</div>
+          <div style={{ opacity: 0.75, fontSize: 10 }}>{doctor.specialty}</div>
+        </div>,
+        document.body
+      )}
     </motion.g>
   );
 };
