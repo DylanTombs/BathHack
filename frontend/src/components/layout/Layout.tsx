@@ -9,6 +9,19 @@ import { useUIStore } from '../../store/uiStore';
 import { AISummary } from './AISummary';
 import { useWebSocket } from '../../hooks/useWebSocket';
 
+// Separate component so only it re-renders on every-frame position updates
+const EntityDetailAnchor: React.FC<{ requestExplanation: (t: 'patient' | 'doctor', id: number) => void }> = ({ requestExplanation }) => {
+  const x = useUIStore(s => s.entityScreenX);
+  const y = useUIStore(s => s.entityScreenY);
+  const left = x !== null ? Math.min(x + 20, window.innerWidth - 320) : window.innerWidth / 2 - 140;
+  const top  = y !== null ? Math.max(y - 120, 80) : 200;
+  return (
+    <div className="fixed z-50" style={{ left, top }}>
+      <EntityDetailPanel requestExplanation={requestExplanation} />
+    </div>
+  );
+};
+
 export const Layout: React.FC = () => {
   const { connected, tick } = useSimulationStore();
   const { isPanelOpen, leftPanelVisible, toggleLeftPanel } = useUIStore();
@@ -65,12 +78,8 @@ export const Layout: React.FC = () => {
         {leftPanelVisible ? '‹' : '›'}
       </button>
 
-      {/* Entity detail — fixed overlay, left of the graph panel */}
-      {isPanelOpen && (
-        <div className="fixed z-50" style={{ bottom: '24px', right: '448px' }}>
-          <EntityDetailPanel requestExplanation={requestExplanation} />
-        </div>
-      )}
+      {/* Entity detail — follows the selected entity on screen */}
+      {isPanelOpen && <EntityDetailAnchor requestExplanation={requestExplanation} />}
 
       {/* Always-visible graph/events panel */}
       <GraphOverlayPanel />

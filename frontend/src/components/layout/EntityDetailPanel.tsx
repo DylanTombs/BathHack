@@ -48,7 +48,7 @@ export const EntityDetailPanel: React.FC<Props> = ({ requestExplanation }) => {
   if (!patient && !doctor) return null;
 
   return (
-    <div className="bg-white rounded-xl border border-gray-200 shadow-sm overflow-hidden">
+    <div className="bg-white rounded-xl border border-gray-200 shadow-xl overflow-hidden" style={{ width: explanationText ? '340px' : '280px', transition: 'width 0.2s ease' }}>
       <div className="px-4 py-2 bg-gray-50 border-b border-gray-100 flex items-center justify-between">
         <h3 className="text-xs font-semibold text-gray-500 uppercase">
           {selectedEntityType === 'patient' ? 'Patient Detail' : 'Doctor Detail'}
@@ -180,7 +180,7 @@ export const EntityDetailPanel: React.FC<Props> = ({ requestExplanation }) => {
 
         {/* Explanation text */}
         {explanationText && (
-          <div className="text-xs bg-indigo-50 border border-indigo-100 rounded p-3 text-indigo-800 leading-relaxed">
+          <div className="text-xs bg-indigo-50 border border-indigo-100 rounded p-3 text-indigo-800 leading-relaxed overflow-y-auto scrollbar-hidden" style={{ maxHeight: '180px' }}>
             <div className="font-semibold mb-1">AI Explanation:</div>
             {explanationText}
           </div>

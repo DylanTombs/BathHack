@@ -102,11 +102,11 @@ export const AISummary: React.FC = () => {
         <div className="grid grid-cols-2 gap-2">
           {[
             { label: 'ICU',          value: `${icu.occupied}/${icu.capacity}`,   sub: `${metrics.icu_occupancy_pct.toFixed(0)}% full`,           hot: metrics.icu_occupancy_pct >= 90 },
-            { label: 'General Ward', value: `${gw.occupied}/${gw.capacity}`,     sub: `${metrics.general_ward_occupancy_pct.toFixed(0)}% full`,   hot: metrics.general_ward_occupancy_pct >= 90 },
-            { label: 'Queue',        value: metrics.current_queue_length,         sub: `${waiting} in waiting`,                                    hot: metrics.current_queue_length > 10 },
-            { label: 'Critical ⚠',  value: metrics.critical_patients_waiting,    sub: 'waiting untreated',                                        hot: metrics.critical_patients_waiting > 0 },
-            { label: 'Doctors',      value: `${available}/${doctors.length}`,     sub: `${metrics.doctor_utilisation_pct.toFixed(0)}% utilised`,   hot: metrics.doctor_utilisation_pct >= 90 },
-            { label: 'Mortality',    value: `${metrics.mortality_rate_pct.toFixed(1)}%`, sub: `${metrics.total_patients_deceased} deceased`,       hot: metrics.mortality_rate_pct > 5 },
+            { label: 'General Ward', value: `${gw.occupied}/${gw.capacity}`,     sub: `${(metrics.general_ward_occupancy_pct ?? 0).toFixed(0)}% full`,   hot: (metrics.general_ward_occupancy_pct ?? 0) >= 90 },
+            { label: 'Queue',        value: metrics.current_queue_length ?? 0,    sub: `${waiting} in waiting`,                                    hot: (metrics.current_queue_length ?? 0) > 10 },
+            { label: 'Critical ⚠',  value: metrics.critical_patients_waiting ?? 0, sub: 'waiting untreated',                                      hot: (metrics.critical_patients_waiting ?? 0) > 0 },
+            { label: 'Doctors',      value: `${available}/${doctors.length}`,     sub: `${(metrics.doctor_utilisation_pct ?? 0).toFixed(0)}% utilised`,   hot: (metrics.doctor_utilisation_pct ?? 0) >= 90 },
+            { label: 'Mortality',    value: `${(metrics.mortality_rate_pct ?? 0).toFixed(1)}%`, sub: `${metrics.total_patients_deceased ?? 0} deceased`, hot: (metrics.mortality_rate_pct ?? 0) > 5 },
           ].map(({ label, value, sub, hot }) => (
             <div key={label} className={`rounded-lg px-3 py-2 border ${hot ? 'bg-red-50 border-red-200' : 'bg-gray-50 border-gray-100'}`}>
               <div className="text-xs font-semibold text-gray-500 uppercase">{label}</div>

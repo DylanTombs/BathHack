@@ -22,12 +22,32 @@ export const HospitalMap: React.FC = () => {
   // Re-send after iframe (re)loads
   const onLoad = useCallback(() => { pushState(); }, [pushState]);
 
-  // Listen for entity clicks from the 3D scene
+  // Listen for messages from the 3D scene
   useEffect(() => {
     const onMsg = (ev: MessageEvent) => {
       const msg = ev.data;
-      if (msg?.type !== 'entity_click') return;
-      useUIStore.getState().selectEntity(msg.entityId, msg.entityType);
+      if (!msg) return;
+      if (msg.type === 'entity_click') {
+        useUIStore.getState().selectEntity(msg.entityId, msg.entityType);
+        const rect = iframeRef.current?.getBoundingClientRect();
+        if (rect && msg.nx != null) {
+          useUIStore.getState().setEntityScreenPos(
+            rect.left + msg.nx * rect.width,
+            rect.top  + msg.ny * rect.height,
+          );
+        }
+      } else if (msg.type === 'entity_pos') {
+        const rect = iframeRef.current?.getBoundingClientRect();
+        if (rect) {
+          useUIStore.getState().setEntityScreenPos(
+            rect.left + msg.nx * rect.width,
+            rect.top  + msg.ny * rect.height,
+          );
+        }
+      } else if (msg.type === 'entity_deselect') {
+        useUIStore.getState().clearSelection();
+        useUIStore.getState().setEntityScreenPos(null, null);
+      }
     };
     window.addEventListener('message', onMsg);
     return () => window.removeEventListener('message', onMsg);
