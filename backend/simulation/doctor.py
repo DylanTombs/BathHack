@@ -70,6 +70,7 @@ class DoctorAgent:
     def __init__(self, doctor: Doctor, llm_callback=None) -> None:
         self.doctor = doctor
         self._llm_callback = llm_callback
+        self._last_llm_tick: int = -DOCTOR_LLM_COOLDOWN_TICKS  # ready to call immediately
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -118,6 +119,7 @@ class DoctorAgent:
         if self._should_call_llm_for_decision(tick, candidates, hospital):
             chosen = await self._llm_decide(candidates, tick, hospital)
             if chosen is not None:
+                self._last_llm_tick = tick
                 return chosen
             # Fall through to rule-based
 
@@ -149,8 +151,37 @@ class DoctorAgent:
         candidates: list["PatientAgent"],
         hospital: "Hospital",
     ) -> bool:
-        """Use LLM for every decision when available."""
-        return self._llm_callback is not None
+        """
+        Call LLM only under genuine pressure, with a per-doctor cooldown.
+        Triggers when ANY of:
+          - ≥2 critical patients are waiting (triage urgency)
+          - ICU is full AND a critical patient is stranded in general ward
+          - This doctor's workload is 'overwhelmed'
+        """
+        if self._llm_callback is None:
+            return False
+
+        # Per-doctor cooldown
+        if tick - self._last_llm_tick < DOCTOR_LLM_COOLDOWN_TICKS:
+            return False
+
+        # Trigger: multiple critical patients competing for attention
+        critical_count = sum(1 for pa in candidates if pa.patient.severity == "critical")
+        if critical_count >= 2:
+            return True
+
+        # Trigger: ICU full with a critical patient stuck in general ward
+        if hospital.is_ward_full("icu") and any(
+            pa.patient.severity == "critical" and pa.patient.location == "general_ward"
+            for pa in candidates
+        ):
+            return True
+
+        # Trigger: overwhelmed workload — LLM can help deprioritise
+        if self.doctor.workload == "overwhelmed":
+            return True
+
+        return False
 
     async def _llm_decide(
         self,

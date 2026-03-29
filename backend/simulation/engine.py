@@ -259,8 +259,6 @@ class SimulationEngine:
 
         # Accumulate all events for report (bounded to 2000 entries)
         self._all_events.extend(self._events_this_tick)
-        if len(self._all_events) > 2000:
-            self._all_events = self._all_events[-2000:]
 
         return self._build_state()
 
@@ -348,7 +346,8 @@ class SimulationEngine:
           - Emit surge_triggered event
         """
         self.intervention_tracker.record(self._tick, "surge", {"multiplier": 4, "duration_ticks": SURGE_DURATION_TICKS})
-        self._surge_ticks_remaining = SURGE_DURATION_TICKS
+        # +1 because _update_scenario_timers() decrements before _generate_arrivals() runs
+        self._surge_ticks_remaining = SURGE_DURATION_TICKS + 1
         self._surge_arrival_multiplier = 4.0
         self._scenario = "surge"
         logger.info("Surge triggered at tick %d", self._tick)
@@ -544,7 +543,8 @@ class SimulationEngine:
             return specs
 
         generate_fn = getattr(self.llm_callback, "generate_patient_batch", None)
-        if generate_fn is None:
+        if generate_fn is None or poisson_count == 0:
+            # Skip LLM entirely when no patients are expected this tick
             specs = _fallback_specs()
         else:
             metrics = self.get_metrics()
@@ -561,8 +561,12 @@ class SimulationEngine:
                 general_ward_occupancy_pct=metrics.general_ward_occupancy_pct,
                 icu_occupancy_pct=metrics.icu_occupancy_pct,
                 arrival_rate_hint=rate,
+                count_hint=poisson_count,
             )
             specs = await generate_fn(ctx, _fallback_specs)
+            # Hard-cap to Poisson draw so LLM can't flood a single tick
+            if len(specs) > poisson_count:
+                specs = specs[:poisson_count]
 
         # Scale fatal_wait_ticks by severity level
         for spec in specs:
