@@ -318,25 +318,25 @@ def build_patient_arrival_prompt(ctx: ArrivalContext) -> str:
     informed by time-of-day, day-of-week, and hospital state.
     """
     surge_note = " [MASS CASUALTY SURGE ACTIVE]" if ctx.surge_active else ""
-    max_count = max(1, int(ctx.arrival_rate_hint * 2))
+    count_hint = getattr(ctx, "count_hint", max(1, round(ctx.arrival_rate_hint)))
 
     return f"""You are generating new patient arrivals for a hospital A&E simulation.
 Simulated time: {ctx.sim_datetime}{surge_note}
 Hospital status: queue={ctx.current_queue_length} waiting, general ward={ctx.general_ward_occupancy_pct:.0f}% full, ICU={ctx.icu_occupancy_pct:.0f}% full
-Scenario: {ctx.scenario}. Expected arrival rate this tick: {ctx.arrival_rate_hint:.1f}
+Scenario: {ctx.scenario}. Patients arriving this tick: {count_hint}
 
-REAL-WORLD A&E ARRIVAL PATTERNS — use these to decide count and patient types:
-- 00:00–05:00: 0–1 patients (alcohol intoxication, trauma, mental health crisis, assault)
-- 06:00–09:00: 1–2 patients (cardiac events, diabetic emergencies, morning accidents)
-- 09:00–17:00: 2–4 patients (GP referrals, workplace injuries, chest pain, abdominal pain)
-- 17:00–22:00: 3–5 patients (post-work accidents, sports injuries, DIY injuries)
-- Friday/Saturday 22:00–03:00: 4–6 patients (high trauma, assault, alcohol, overdose)
+REAL-WORLD A&E ARRIVAL PATTERNS — use these to inform patient types:
+- 00:00–05:00: alcohol intoxication, trauma, mental health crisis, assault
+- 06:00–09:00: cardiac events, diabetic emergencies, morning accidents
+- 09:00–17:00: GP referrals, workplace injuries, chest pain, abdominal pain
+- 17:00–22:00: post-work accidents, sports injuries, DIY injuries
+- Friday/Saturday 22:00–03:00: high trauma, assault, alcohol, overdose
 - Monday morning: elevated cardiac events, stress-related presentations
 - Severity realism target (normal operation): mostly low/moderate acuity;
     critical presentations should be uncommon (~3-8% of arrivals, not every tick)
-- Surge active: generate more patients and increase acuity, but avoid making most arrivals critical
+- Surge active: increase acuity mix, but avoid making most arrivals critical
 
-Generate a realistic batch of patients arriving RIGHT NOW at this A&E (0 to {max_count} patients).
+Generate exactly {count_hint} patient(s) arriving RIGHT NOW at this A&E.
 Each patient must be a coherent person — realistic full name, age appropriate for diagnosis, specific clinical diagnosis, and a brief backstory explaining why they are here today.
 
 Respond with a JSON array ONLY — no commentary, no markdown fences, no extra text:

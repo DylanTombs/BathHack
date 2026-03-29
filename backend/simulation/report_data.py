@@ -76,11 +76,20 @@ class ReportDataAggregator:
 
         total_ticks = engine.current_tick
 
-        # Peak values across full history
-        peak_queue = max((s.current_queue_length for s in history), default=0)
-        peak_icu = max((s.icu_occupancy_pct for s in history), default=0.0)
-        peak_general = max((s.general_ward_occupancy_pct for s in history), default=0.0)
-        peak_critical = max((s.critical_patients_waiting for s in history), default=0)
+        # Peak values — single pass over history instead of four separate max() calls
+        peak_queue: int = 0
+        peak_icu: float = 0.0
+        peak_general: float = 0.0
+        peak_critical: int = 0
+        for s in history:
+            if s.current_queue_length > peak_queue:
+                peak_queue = s.current_queue_length
+            if s.icu_occupancy_pct > peak_icu:
+                peak_icu = s.icu_occupancy_pct
+            if s.general_ward_occupancy_pct > peak_general:
+                peak_general = s.general_ward_occupancy_pct
+            if s.critical_patients_waiting > peak_critical:
+                peak_critical = s.critical_patients_waiting
 
         interventions = list(engine.intervention_tracker.records)
         all_events = list(engine._all_events)
@@ -150,8 +159,8 @@ class ReportDataAggregator:
             avg_queue = sum(s.current_queue_length for s in phase_snaps) / n
             avg_icu = sum(s.icu_occupancy_pct for s in phase_snaps) / n
             avg_general = sum(s.general_ward_occupancy_pct for s in phase_snaps) / n
-            discharges = sum(discharge_by_tick.get(t, 0) for t in range(start, end + 1))
-            deaths = sum(death_by_tick.get(t, 0) for t in range(start, end + 1))
+            discharges = sum(v for t, v in discharge_by_tick.items() if start <= t <= end)
+            deaths = sum(v for t, v in death_by_tick.items() if start <= t <= end)
 
             phases.append(PhaseAnnotation(
                 label=label,

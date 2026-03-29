@@ -11,6 +11,7 @@ Wire format: data-contracts.md §2, §3, §4.
 """
 from __future__ import annotations
 
+import asyncio
 import json
 import logging
 
@@ -46,23 +47,27 @@ class WebSocketManager:
 
     async def broadcast_state(self, state) -> None:
         """
-        Serialise SimulationState and send to every connected client.
+        Serialise SimulationState and send to every connected client in parallel.
         Dead connections are silently removed without interrupting other clients.
         """
         if not self._connections:
             return
         payload = json.dumps(serialize_state(state))
-        dead: list[WebSocket] = []
-        for ws in list(self._connections):
+
+        async def _send(ws: WebSocket) -> WebSocket | None:
             try:
                 await ws.send_text(payload)
+                return None
             except Exception:
-                dead.append(ws)
-        for ws in dead:
-            try:
-                self._connections.remove(ws)
-            except ValueError:
-                pass
+                return ws
+
+        results = await asyncio.gather(*[_send(ws) for ws in list(self._connections)])
+        for ws in results:
+            if ws is not None:
+                try:
+                    self._connections.remove(ws)
+                except ValueError:
+                    pass
 
     async def send_to(self, ws: WebSocket, message: dict) -> None:
         """Send a targeted JSON message to a single client."""

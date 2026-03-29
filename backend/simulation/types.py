@@ -231,6 +231,7 @@ class ArrivalContext:
     general_ward_occupancy_pct: float
     icu_occupancy_pct: float
     arrival_rate_hint: float    # base_rate * surge_multiplier
+    count_hint: int             # Poisson draw for this tick — LLM should match this count
 
 @dataclass
 class PatientSpec:
