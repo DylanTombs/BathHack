@@ -1,4 +1,5 @@
 import React, { useCallback } from 'react';
+import { createPortal } from 'react-dom';
 import { InterventionTimeline } from './InterventionTimeline';
 import type { ReportPayload } from '../../store/simulationStore';
 
@@ -33,8 +34,8 @@ export const ReportModal: React.FC<Props> = ({ report, onClose }) => {
     URL.revokeObjectURL(url);
   }, [report]);
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
+  return createPortal(
+    <div className="fixed inset-0 z-[100] flex items-center justify-center bg-black/60 backdrop-blur-sm p-4">
       <div className="bg-white rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col overflow-hidden">
         {/* Header */}
         <div className="flex items-center justify-between px-6 py-4 border-b border-gray-100 shrink-0">
@@ -139,7 +140,8 @@ export const ReportModal: React.FC<Props> = ({ report, onClose }) => {
           </Section>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 };
 
