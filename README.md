@@ -1,6 +1,6 @@
 <div align="center">
 
-# 🏥 Hospital AI Simulation
+# C Clinic — Hospital AI Simulation
 
 ### *Every icon on this map is an AI agent making real decisions in real time.*
 
@@ -32,6 +32,7 @@
 | 📊 **Live Metrics** | Occupancy, queue depth, and throughput charts update every tick. Seed from history on page load. |
 | 🎛️ **Full Control** | Adjust arrival rate, tick speed, severity level, doctor count, and bed count while the simulation is running — no restart needed. |
 | 🚨 **Stress Scenarios** | Trigger a **Mass Casualty Surge** or **Staff Shortage** with one click and watch the cascade unfold. |
+| 📋 **Session Report** | End the simulation and get a full LLM-written analysis — phases, interventions, mortality rate, and strategic recommendations. |
 
 ---
 
@@ -45,6 +46,7 @@
 5. Hit 👨‍⚕️ Shortage  →  half the staff disappears, watch the cascade
 6. Charts spike: occupancy ↑  queue ↑  throughput ↓
 7. Hit ✅ Normal  →  observe the recovery
+8. Hit 📋 End & Generate Report  →  get a full LLM-written analysis of the session
 ```
 
 ---
@@ -95,25 +97,28 @@ cp .env.example backend/.env
 # Open backend/.env and set ANTHROPIC_API_KEY=sk-ant-...
 ```
 
-### 2. Start the backend
+### 2. One-command start
 
 ```bash
+./start.sh   # starts backend + frontend in background
+./stop.sh    # stops both
+```
+
+Or manually:
+
+```bash
+# Backend
 cd backend
 pip install -r requirements.txt
 uvicorn api.main:app --reload --port 8000
-```
 
-> API running at **http://localhost:8000** · Swagger docs at **http://localhost:8000/docs**
-
-### 3. Start the frontend
-
-```bash
+# Frontend (separate terminal)
 cd frontend
 npm install
 npm run dev
 ```
 
-> Open **http://localhost:5173** 🎉
+> Backend at **http://localhost:8000** · Swagger at **http://localhost:8000/docs** · Frontend at **http://localhost:5173** 🎉
 
 ---
 
@@ -153,7 +158,7 @@ Everything except `ANTHROPIC_API_KEY` can also be changed live via the frontend 
 
 **Server → Client** (every tick): full `SimulationState` — patients, doctors, ward occupancy, events, metrics.
 
-**Client → Server** (`TriggerCommand`): `start` · `pause` · `reset` · `update_config` · `add_doctor` · `remove_doctor` · `add_bed` · `remove_bed` · `explain_entity`
+**Client → Server** (`TriggerCommand`): `start` · `pause` · `reset` · `update_config` · `add_doctor` · `remove_doctor` · `add_bed` · `remove_bed` · `explain_patient` · `explain_doctor` · `generate_report`
 
 ---
 
