@@ -9,49 +9,52 @@
 [![React](https://img.shields.io/badge/React-19-61DAFB?style=for-the-badge&logo=react&logoColor=black)](https://react.dev)
 [![TypeScript](https://img.shields.io/badge/TypeScript-5.9-3178C6?style=for-the-badge&logo=typescript&logoColor=white)](https://typescriptlang.org)
 [![Claude](https://img.shields.io/badge/Powered%20by-Claude%20AI-D97706?style=for-the-badge&logo=anthropic&logoColor=white)](https://anthropic.com)
+[![BathHack](https://img.shields.io/badge/BathHack-Best%20Use%20of%20AI-gold?style=for-the-badge)](https://github.com/DylanTombs/BathHack)
 
 <br/>
+
+> **Winner — Best Use of AI, BathHack 2026**
 
 > A real-time hospital simulation where patients and doctors are **LLM-backed AI agents**, hospital resources are constrained, and a live visual map shows the system under pressure. Trigger a mass casualty event, watch the ICU fill up, and ask any doctor to explain their triage decision — in plain English, in real time.
 
 <br/>
 
-[**Live Demo**](#-quick-start) · [**How It Works**](#-how-it-works) · [**API Docs**](#-api-reference)
+[**Live Demo**](#quick-start) · [**How It Works**](#architecture) · [**API Docs**](#api-reference)
 
 </div>
 
 ---
 
-## ✨ What Makes This Cool
+## What Makes This Cool
 
 | | |
 |---|---|
-| 🤖 **AI Agents** | Every patient and doctor is a live agent. Doctors call Claude when deciding who to treat next — and show their reasoning. |
-| 🗺️ **Live Map** | Watch agents move between Waiting Room, General Ward, and ICU zones in real time over WebSocket. |
-| 🧠 **Explainable AI** | Click any doctor or patient to get an on-demand LLM explanation of their current situation and last decision. |
-| 📊 **Live Metrics** | Occupancy, queue depth, and throughput charts update every tick. Seed from history on page load. |
-| 🎛️ **Full Control** | Adjust arrival rate, tick speed, severity level, doctor count, and bed count while the simulation is running — no restart needed. |
-| 🚨 **Stress Scenarios** | Trigger a **Mass Casualty Surge** or **Staff Shortage** with one click and watch the cascade unfold. |
-| 📋 **Session Report** | End the simulation and get a full LLM-written analysis — phases, interventions, mortality rate, and strategic recommendations. |
+| **AI Agents** | Every patient and doctor is a live agent. Doctors call Claude when deciding who to treat next — and show their reasoning. |
+| **Live Map** | Watch agents move between Waiting Room, General Ward, and ICU zones in real time over WebSocket. |
+| **Explainable AI** | Click any doctor or patient to get an on-demand LLM explanation of their current situation and last decision. |
+| **Live Metrics** | Occupancy, queue depth, and throughput charts update every tick. Seed from history on page load. |
+| **Full Control** | Adjust arrival rate, tick speed, severity level, doctor count, and bed count while the simulation is running — no restart needed. |
+| **Stress Scenarios** | Trigger a **Mass Casualty Surge** or **Staff Shortage** with one click and watch the cascade unfold. |
+| **Session Report** | End the simulation and get a full LLM-written analysis — phases, interventions, mortality rate, and strategic recommendations. |
 
 ---
 
-## 🎬 Demo Walkthrough
+## Demo Walkthrough
 
 ```
 1. Open http://localhost:5173 — see a calm hospital, a few patients in the waiting area
-2. Hit 🚨 Surge   →  patient flood, ICU fills, queue backs up
+2. Hit Surge    ->  patient flood, ICU fills, queue backs up
 3. Doctors start making LLM-driven triage decisions — confidence % shown live
-4. Click any doctor  →  see their last decision + "🤖 Get AI Summary"
-5. Hit 👨‍⚕️ Shortage  →  half the staff disappears, watch the cascade
-6. Charts spike: occupancy ↑  queue ↑  throughput ↓
-7. Hit ✅ Normal  →  observe the recovery
-8. Hit 📋 End & Generate Report  →  get a full LLM-written analysis of the session
+4. Click any doctor  ->  see their last decision + "Get AI Summary"
+5. Hit Shortage  ->  half the staff disappears, watch the cascade
+6. Charts spike: occupancy up  queue up  throughput down
+7. Hit Normal  ->  observe the recovery
+8. Hit End & Generate Report  ->  get a full LLM-written analysis of the session
 ```
 
 ---
 
-## 🏗️ Architecture
+## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────┐
@@ -81,7 +84,7 @@ The simulation engine runs a tick loop (configurable speed). Each tick:
 
 ---
 
-## 🚀 Quick Start
+## Quick Start
 
 ### Prerequisites
 - Python 3.11+
@@ -118,11 +121,11 @@ npm install
 npm run dev
 ```
 
-> Backend at **http://localhost:8000** · Swagger at **http://localhost:8000/docs** · Frontend at **http://localhost:5173** 🎉
+> Backend at **http://localhost:8000** · Swagger at **http://localhost:8000/docs** · Frontend at **http://localhost:5173**
 
 ---
 
-## ⚙️ Configuration
+## Configuration
 
 All settings live in `backend/.env` (copy from `.env.example`):
 
@@ -141,7 +144,7 @@ Everything except `ANTHROPIC_API_KEY` can also be changed live via the frontend 
 
 ---
 
-## 🌐 API Reference
+## API Reference
 
 ### REST Endpoints
 
@@ -162,7 +165,7 @@ Everything except `ANTHROPIC_API_KEY` can also be changed live via the frontend 
 
 ---
 
-## 📂 Project Structure
+## Project Structure
 
 ```
 BathHack/
@@ -187,7 +190,7 @@ BathHack/
 
 ---
 
-## 🛠️ Tech Stack
+## Tech Stack
 
 <div align="center">
 
@@ -205,7 +208,7 @@ BathHack/
 
 ---
 
-## 📄 License
+## License
 
 [MIT](LICENSE)
 
@@ -213,6 +216,6 @@ BathHack/
 
 <div align="center">
 
-Built with ❤️ at **BathHack**
+Built at **BathHack 2026** — Winner, Best Use of AI
 
 </div>
