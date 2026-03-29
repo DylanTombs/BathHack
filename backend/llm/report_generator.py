@@ -1,7 +1,7 @@
 """
 ReportGenerator — produces an AI-written analysis of a completed simulation run.
 
-Uses the Anthropic client directly (consistent with the project stack).
+Uses OpenRouter (via openai-compatible client) for LLM calls.
 Model is configurable via REPORT_LLM_MODEL env var.
 Falls back to a plain-text template report if the LLM call fails.
 """
@@ -16,42 +16,40 @@ if TYPE_CHECKING:
 
 logger = logging.getLogger(__name__)
 
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
-class AnthropicReportClient:
+
+class OpenRouterReportClient:
     """
-    Thin async wrapper around the Anthropic messages API.
+    Thin async wrapper around the OpenRouter API (openai-compatible).
     Uses a large token budget (3000) since this is a one-shot call.
     """
 
-    def __init__(self, model: str = "claude-haiku-4-5-20251001") -> None:
+    def __init__(self, model: str = "openai/gpt-4o-mini") -> None:
         self.model = model
-        try:
-            import anthropic  # noqa: F401
-            api_key = os.getenv("ANTHROPIC_API_KEY", "")
-            import anthropic as _anthropic
-            self._client = _anthropic.AsyncAnthropic(api_key=api_key)
-            self._available = True
-        except ImportError:
-            logger.warning(
-                "anthropic package not installed — report will use fallback template"
-            )
-            self._client = None
-            self._available = False
+        import openai
+        api_key = os.getenv("OPENROUTER_API_KEY") or os.getenv("OPENAI_API_KEY", "")
+        self._client = openai.AsyncOpenAI(
+            api_key=api_key,
+            base_url=OPENROUTER_BASE_URL,
+        )
 
     async def generate(self, prompt: str) -> str:
-        """Call the Anthropic API and return the response text, or '' on failure."""
-        if not self._available or self._client is None:
-            return ""
+        """Call the OpenRouter API and return the response text, or '' on failure."""
         try:
-            message = await self._client.messages.create(
+            response = await self._client.chat.completions.create(
                 model=self.model,
                 max_tokens=3000,
                 messages=[{"role": "user", "content": prompt}],
             )
-            return message.content[0].text if message.content else ""
+            return response.choices[0].message.content or ""
         except Exception as exc:
-            logger.error("Anthropic report generation failed: %s", exc)
+            logger.error("OpenRouter report generation failed: %s", exc)
             return ""
+
+
+# Keep old name as alias for any existing imports
+AnthropicReportClient = OpenRouterReportClient
 
 
 class ReportGenerator:
@@ -62,9 +60,9 @@ class ReportGenerator:
 
     def __init__(self, model: str | None = None) -> None:
         resolved_model = model or os.getenv(
-            "REPORT_LLM_MODEL", "claude-haiku-4-5-20251001"
+            "REPORT_LLM_MODEL", "openai/gpt-4o-mini"
         )
-        self._client = AnthropicReportClient(resolved_model)
+        self._client = OpenRouterReportClient(resolved_model)
 
     async def generate(self, report: "SimulationReport") -> str:
         """Return the LLM-written analysis, or a template fallback."""

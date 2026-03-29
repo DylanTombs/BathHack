@@ -46,7 +46,7 @@ from llm.prompts import (
 
 logger = logging.getLogger(__name__)
 
-OPENROUTER_BASE_URL = "https://api.openai.com/v1"
+OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 
 # ── System prompt (shared by all calls) ───────────────────────────────────────
 SYSTEM_PROMPT = (

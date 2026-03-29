@@ -38,7 +38,8 @@
       "Bash(powershell -Command \"Stop-Process -Id 34352,36408 -Force -ErrorAction SilentlyContinue; Write-Host ''Stopped''\")",
       "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort, OwningProcess\")",
       "Bash(powershell -Command \"Stop-Process -Id 21656 -Force -ErrorAction SilentlyContinue; Write-Host ''Stopped''\")",
-      "Bash(curl -s http://localhost:8000/api/health)"
+      "Bash(curl -s http://localhost:8000/api/health)",
+      "Bash(start cmd:*)"
     ],
     "additionalDirectories": [
       "C:\\Users\\leoma\\BathHack\\BathHack\\.claude"
