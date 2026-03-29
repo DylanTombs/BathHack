@@ -93,6 +93,11 @@ interface SimulationStore {
   setReportGenerating: () => void;
   setReportReady: (report: ReportPayload) => void;
   clearReport: () => void;
+  // Optimistic updates (immediate UI feedback before server confirms)
+  optimisticAddDoctor: (specialty: string) => void;
+  optimisticRemoveDoctor: () => void;
+  optimisticAddBed: (ward: string) => void;
+  optimisticRemoveBed: (ward: string) => void;
 }
 
 export const useSimulationStore = create<SimulationStore>((set, get) => ({
@@ -167,4 +172,48 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   setReportGenerating: () => set({ reportState: 'generating', report: null }),
   setReportReady: (report) => set({ reportState: 'ready', report }),
   clearReport: () => set({ reportState: 'idle', report: null }),
+
+  optimisticAddDoctor: (specialty: string) => {
+    const { doctors } = get();
+    const placeholder: Doctor = {
+      id: -(Date.now()),
+      name: 'New Doctor',
+      assigned_patient_ids: [],
+      capacity: 3,
+      workload: 'light',
+      specialty,
+      grid_x: 0,
+      grid_y: 0,
+      is_available: true,
+      decisions_made: 0,
+      last_decision_reason: null,
+      last_decision_confidence: null,
+      last_decision_patient_id: null,
+      ward: specialty.toLowerCase() === 'icu' ? 'icu' : 'general_ward',
+    };
+    set({ doctors: [...doctors, placeholder] });
+  },
+
+  optimisticRemoveDoctor: () => {
+    const { doctors } = get();
+    if (doctors.length <= 1) return;
+    // Prefer removing an available doctor; fall back to last
+    const availIdx = [...doctors].map((d, i) => ({ d, i })).reverse().find(({ d }) => d.is_available)?.i;
+    const removeIdx = availIdx ?? doctors.length - 1;
+    set({ doctors: doctors.filter((_, i) => i !== removeIdx) });
+  },
+
+  optimisticAddBed: (ward: string) => {
+    const { wards } = get();
+    const key = ward as WardName;
+    if (!wards[key]) return;
+    set({ wards: { ...wards, [key]: { ...wards[key], capacity: wards[key].capacity + 1 } } });
+  },
+
+  optimisticRemoveBed: (ward: string) => {
+    const { wards } = get();
+    const key = ward as WardName;
+    if (!wards[key] || wards[key].capacity <= 1) return;
+    set({ wards: { ...wards, [key]: { ...wards[key], capacity: wards[key].capacity - 1 } } });
+  },
 }));
