@@ -4,6 +4,49 @@ import type {
   SimEvent, WardName, WardState
 } from '../types/simulation';
 
+export interface ReportPhase {
+  label: string;
+  start_tick: number;
+  end_tick: number;
+  avg_queue: number;
+  avg_icu_pct: number;
+  avg_general_pct: number;
+  discharges: number;
+  deaths: number;
+  intervention_type: string | null;
+}
+
+export interface ReportIntervention {
+  tick: number;
+  simulated_hour: number;
+  intervention_type: string;
+  detail: Record<string, unknown>;
+  metrics_at_time: {
+    current_queue_length: number;
+    icu_occupancy_pct: number;
+    general_ward_occupancy_pct: number;
+    critical_patients_waiting: number;
+  };
+}
+
+export interface ReportPayload {
+  total_ticks: number;
+  total_simulated_hours: number;
+  total_arrived: number;
+  total_discharged: number;
+  total_deceased: number;
+  final_mortality_rate_pct: number;
+  avg_wait_time_ticks: number;
+  avg_treatment_time_ticks: number;
+  peak_queue_length: number;
+  peak_icu_occupancy_pct: number;
+  peak_general_occupancy_pct: number;
+  peak_critical_waiting: number;
+  phases: ReportPhase[];
+  interventions: ReportIntervention[];
+  llm_analysis: string;
+}
+
 export interface MetricsHistoryPoint {
   tick: number;
   general_ward_occupancy_pct: number;
@@ -37,12 +80,19 @@ interface SimulationStore {
   // WebSocket status
   connected: boolean;
 
+  // Report state
+  reportState: 'idle' | 'generating' | 'ready';
+  report: ReportPayload | null;
+
   // Actions
   applyState: (state: SimulationState) => void;
   appendEvents: (events: SimEvent[]) => void;
   setConnected: (v: boolean) => void;
   seedHistory: (history: MetricsHistoryPoint[]) => void;
   applyCommandAck: (isRunning: boolean) => void;
+  setReportGenerating: () => void;
+  setReportReady: (report: ReportPayload) => void;
+  clearReport: () => void;
 }
 
 export const useSimulationStore = create<SimulationStore>((set, get) => ({
@@ -62,6 +112,8 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   events: [],
   metricsHistory: [],
   connected: false,
+  reportState: 'idle',
+  report: null,
 
   applyState: (state: SimulationState) => {
     set({
@@ -112,4 +164,7 @@ export const useSimulationStore = create<SimulationStore>((set, get) => ({
   setConnected: (v) => set({ connected: v }),
   seedHistory: (history) => set({ metricsHistory: history }),
   applyCommandAck: (isRunning) => set({ isRunning }),
+  setReportGenerating: () => set({ reportState: 'generating', report: null }),
+  setReportReady: (report) => set({ reportState: 'ready', report }),
+  clearReport: () => set({ reportState: 'idle', report: null }),
 }));

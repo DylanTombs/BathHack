@@ -3,7 +3,7 @@ import { useSimulationStore } from '../store/simulationStore';
 import { useUIStore } from '../store/uiStore';
 // useUIStore.getState() used inside ws handler to check current selection without stale closure
 import type { SimulationState, ExplanationResponse, ScenarioConfig } from '../types/simulation';
-import type { MetricsHistoryPoint } from '../store/simulationStore';
+import type { MetricsHistoryPoint, ReportPayload } from '../store/simulationStore';
 
 const WS_URL = import.meta.env.VITE_WS_URL ?? 'ws://localhost:8000/ws';
 const RECONNECT_DELAY_MS = 2000;
@@ -11,7 +11,7 @@ const RECONNECT_DELAY_MS = 2000;
 export function useWebSocket() {
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { applyState, setConnected, seedHistory, applyCommandAck } = useSimulationStore();
+  const { applyState, setConnected, seedHistory, applyCommandAck, setReportGenerating, setReportReady } = useSimulationStore();
   const { setExplanation, setExplanationLoading } = useUIStore();
 
   const connect = useCallback(() => {
@@ -41,6 +41,10 @@ export function useWebSocket() {
           seedHistory(msg.snapshots as MetricsHistoryPoint[]);
         } else if (msg.type === 'command_ack') {
           applyCommandAck(msg.is_running as boolean);
+        } else if (msg.type === 'report_generating') {
+          setReportGenerating();
+        } else if (msg.type === 'report_ready') {
+          setReportReady(msg.report as ReportPayload);
         }
       } catch (e) {
         console.error('[WS] Parse error', e);
@@ -57,7 +61,7 @@ export function useWebSocket() {
       console.error('[WS] Error', err);
       ws.current?.close();
     };
-  }, [applyState, setConnected, seedHistory, setExplanation, applyCommandAck]);
+  }, [applyState, setConnected, seedHistory, setExplanation, applyCommandAck, setReportGenerating, setReportReady]);
 
   useEffect(() => {
     connect();
@@ -93,6 +97,7 @@ export function useWebSocket() {
   const removeDoctor = useCallback(() => sendCommand({ command: 'remove_doctor' }), [sendCommand]);
   const addBed = useCallback((ward: string, count: number = 1) => sendCommand({ command: 'add_bed', ward, count }), [sendCommand]);
   const removeBed = useCallback((ward: string, count: number = 1) => sendCommand({ command: 'remove_bed', ward, count }), [sendCommand]);
+  const generateReport = useCallback(() => sendCommand({ command: 'generate_report' }), [sendCommand]);
 
   const updateConfig = useCallback((config: Partial<ScenarioConfig>) => {
     sendCommand({ command: 'update_config', config });

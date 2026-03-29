@@ -38,6 +38,7 @@ from simulation.patient import PatientAgent, _make_random_spec
 from simulation.doctor import DoctorAgent
 from simulation.queue_manager import PriorityQueue
 from simulation.metrics import MetricsCollector
+from simulation.intervention_tracker import InterventionTracker
 
 try:
     from config import load_config, Config
@@ -127,6 +128,12 @@ class SimulationEngine:
         self._scenario: str = "normal"
         self._patient_id_counter: int = 0
         self._events_this_tick: list[SimEvent] = []
+
+        # Full event log for report generation (bounded to 2000, oldest dropped)
+        self._all_events: list[SimEvent] = []
+
+        # Intervention tracker for report generation
+        self.intervention_tracker: InterventionTracker = InterventionTracker(self.metrics)
 
         # Surge state
         self._surge_ticks_remaining: int = 0
@@ -250,6 +257,11 @@ class SimulationEngine:
                     severity="critical",
                 ))
 
+        # Accumulate all events for report (bounded to 2000 entries)
+        self._all_events.extend(self._events_this_tick)
+        if len(self._all_events) > 2000:
+            self._all_events = self._all_events[-2000:]
+
         return self._build_state()
 
     def apply_config(self, config: ScenarioConfig) -> None:
@@ -286,6 +298,7 @@ class SimulationEngine:
 
     def add_doctor(self, specialty: str = "General") -> None:
         """Add a new doctor with the given specialty mid-simulation."""
+        self.intervention_tracker.record(self._tick, "add_doctor", {"specialty": specialty})
         new_id = max((d.doctor.id for d in self.doctors), default=0) + 1
         da = DoctorAgent.create_with_specialty(new_id, specialty, self.llm_callback)
         self.doctors.append(da)
@@ -293,6 +306,7 @@ class SimulationEngine:
 
     def add_bed(self, ward: str, count: int = 1) -> None:
         """Add beds to a ward mid-simulation."""
+        self.intervention_tracker.record(self._tick, "add_bed", {"ward": ward, "count": count})
         if ward == "general_ward":
             self.hospital.add_general_beds(count)
         elif ward == "icu":
@@ -305,6 +319,7 @@ class SimulationEngine:
 
     def remove_bed(self, ward: str, count: int = 1) -> None:
         """Remove unoccupied beds from a ward mid-simulation."""
+        self.intervention_tracker.record(self._tick, "remove_bed", {"ward": ward, "count": count})
         if ward == "general_ward":
             self.hospital.remove_general_beds(count)
         elif ward == "icu":
@@ -320,6 +335,7 @@ class SimulationEngine:
         if len(self.doctors) <= 1:
             logger.warning("Cannot remove last doctor")
             return
+        self.intervention_tracker.record(self._tick, "remove_doctor", {})
         removed = self.doctors.pop()
         logger.info("Removed %s (id=%d). Total doctors: %d",
                     removed.doctor.name, removed.doctor.id, len(self.doctors))
@@ -331,6 +347,7 @@ class SimulationEngine:
           - 50% of new arrivals are critical/medium
           - Emit surge_triggered event
         """
+        self.intervention_tracker.record(self._tick, "surge", {"multiplier": 4, "duration_ticks": SURGE_DURATION_TICKS})
         self._surge_ticks_remaining = SURGE_DURATION_TICKS
         self._surge_arrival_multiplier = 4.0
         self._scenario = "surge"
@@ -350,6 +367,7 @@ class SimulationEngine:
         Staff shortage: physically remove all but 1 doctor per specialty.
         Benched doctors are restored on trigger_recovery() or when the timer expires.
         """
+        self.intervention_tracker.record(self._tick, "shortage", {"duration_ticks": SHORTAGE_DURATION_TICKS})
         from collections import defaultdict
         by_specialty: dict[str, list] = defaultdict(list)
         for d in self.doctors:
@@ -384,6 +402,7 @@ class SimulationEngine:
 
     def trigger_recovery(self) -> None:
         """Reset scenario to normal — restores benched doctors and default arrival rate."""
+        self.intervention_tracker.record(self._tick, "recovery", {})
         self._surge_ticks_remaining = 0
         self._surge_arrival_multiplier = 1.0
         self._shortage_ticks_remaining = 0
@@ -450,6 +469,8 @@ class SimulationEngine:
         self._benched_doctors = []
         self._arrival_rate = self.config.arrival_rate_per_tick
         self._severity_level = 2
+        self._all_events = []
+        self.intervention_tracker = InterventionTracker(self.metrics)
         self._init_doctors()
 
     # ── Internal helpers ──────────────────────────────────────────────────────

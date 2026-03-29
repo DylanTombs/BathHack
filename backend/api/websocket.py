@@ -251,6 +251,29 @@ async def _handle_command(
             "tick": engine.current_tick,
         })
 
+    elif command == "generate_report":
+        engine.pause()
+        await manager.send_to(ws, {
+            "type": "report_generating",
+            "tick": engine.current_tick,
+        })
+        try:
+            from simulation.report_data import ReportDataAggregator
+            from llm.report_generator import ReportGenerator
+            from api.state_serializer import serialize_report
+            report = ReportDataAggregator.build(engine)
+            generator = ReportGenerator()
+            llm_analysis = await generator.generate(report)
+            serialized = serialize_report(report, llm_analysis)
+            await manager.send_to(ws, {"type": "report_ready", "report": serialized})
+        except Exception as exc:
+            logger.error("Report generation failed: %s", exc, exc_info=True)
+            await manager.send_to(ws, {
+                "type": "error",
+                "message": f"Report generation failed: {exc}",
+                "tick": engine.current_tick,
+            })
+
     elif command == "explain_patient":
         target_id = msg.get("target_id")
         explanation = await _get_explanation("patient", target_id, engine)

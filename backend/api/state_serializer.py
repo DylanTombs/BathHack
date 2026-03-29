@@ -15,6 +15,53 @@ import dataclasses
 
 # ─── Public API ───────────────────────────────────────────────────────────────
 
+def serialize_report(report, llm_analysis: str) -> dict:
+    """
+    Serialize a SimulationReport for the WebSocket report_ready message.
+    Strips the full metrics_history (already sent tick-by-tick) and keeps
+    only headline stats, phase annotations, interventions, and LLM text.
+    """
+    return {
+        "total_ticks": report.total_ticks,
+        "total_simulated_hours": report.total_simulated_hours,
+        "total_arrived": report.total_arrived,
+        "total_discharged": report.total_discharged,
+        "total_deceased": report.total_deceased,
+        "final_mortality_rate_pct": report.final_mortality_rate_pct,
+        "avg_wait_time_ticks": report.avg_wait_time_ticks,
+        "avg_treatment_time_ticks": report.avg_treatment_time_ticks,
+        "peak_queue_length": report.peak_queue_length,
+        "peak_icu_occupancy_pct": report.peak_icu_occupancy_pct,
+        "peak_general_occupancy_pct": report.peak_general_occupancy_pct,
+        "peak_critical_waiting": report.peak_critical_waiting,
+        "phases": [
+            {
+                "label": p.label,
+                "start_tick": p.start_tick,
+                "end_tick": p.end_tick,
+                "avg_queue": p.avg_queue,
+                "avg_icu_pct": p.avg_icu_pct,
+                "avg_general_pct": p.avg_general_pct,
+                "discharges": p.discharges,
+                "deaths": p.deaths,
+                "intervention_type": p.intervention_type,
+            }
+            for p in report.phases
+        ],
+        "interventions": [
+            {
+                "tick": r.tick,
+                "simulated_hour": r.simulated_hour,
+                "intervention_type": r.intervention_type,
+                "detail": r.detail,
+                "metrics_at_time": serialize_metrics(r.metrics_at_time),
+            }
+            for r in report.interventions
+        ],
+        "llm_analysis": llm_analysis,
+    }
+
+
 def serialize_state(state) -> dict:
     """
     Converts SimulationState (dataclass or dict) to a JSON-serialisable dict

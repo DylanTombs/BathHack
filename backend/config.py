@@ -22,6 +22,7 @@ class Config:
     initial_doctors: int
     arrival_rate_per_tick: float
     log_level: str
+    report_llm_model: str
 
 
 def load_config() -> Config:
@@ -34,6 +35,7 @@ def load_config() -> Config:
         initial_doctors=int(os.getenv("INITIAL_DOCTORS", "8")),
         arrival_rate_per_tick=float(os.getenv("ARRIVAL_RATE_PER_TICK", "0.75")),
         log_level=os.getenv("LOG_LEVEL", "INFO"),
+        report_llm_model=os.getenv("REPORT_LLM_MODEL", "claude-haiku-4-5-20251001"),
     )
     logging.basicConfig(level=getattr(logging, cfg.log_level, logging.INFO))
     return cfg

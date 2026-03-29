@@ -1,0 +1,47 @@
+{
+  "permissions": {
+    "allow": [
+      "Bash(where python:*)",
+      "Bash(/c/Users/leoma/AppData/Local/Programs/Python/Python311/python.exe -m pip show uvicorn)",
+      "Bash(/c/Users/leoma/AppData/Local/Python/bin/python.exe -m uvicorn --version)",
+      "Bash(/c/Users/leoma/AppData/Local/Python/bin/python.exe -c \"import fastapi; print\\(''fastapi ok''\\)\")",
+      "Bash(/c/Python314/python.exe -m uvicorn --version)",
+      "Bash(/c/Users/leoma/AppData/Local/Programs/Python/Python311/python.exe -m pip install uvicorn fastapi)",
+      "Bash(/c/Users/leoma/AppData/Local/Programs/Python/Python311/python.exe -m pip install -r /c/Users/leoma/BathHack/BathHack/backend/requirements.txt)",
+      "Bash(/c/Users/leoma/AppData/Local/Programs/Python/Python311/python.exe -m uvicorn api.main:app --reload --port 8000)",
+      "Bash(npm run:*)",
+      "Bash(git fetch:*)",
+      "Bash(git rebase:*)",
+      "Bash(git checkout:*)",
+      "Bash(git merge:*)",
+      "Bash(git pull:*)",
+      "Bash(taskkill /F /IM node.exe)",
+      "Bash(taskkill /F /IM python.exe)",
+      "Bash(taskkill /F /IM uvicorn.exe)",
+      "Bash(cmd /c \"taskkill /F /IM node.exe\")",
+      "Bash(cmd /c \"taskkill /F /IM python.exe\")",
+      "Bash(/c/Users/leoma/AppData/Local/Programs/Python/Python311/python.exe -c \":*)",
+      "Bash(git add:*)",
+      "Bash(git commit:*)",
+      "Bash(git push:*)",
+      "Bash(git stash:*)",
+      "Bash(netstat -ano)",
+      "Bash(/c/Users/leoma/AppData/Local/Programs/Python/Python311/python.exe -m uvicorn api.main:app --port 8001)",
+      "Bash(powershell.exe -Command \"Get-Process -Name python* -ErrorAction SilentlyContinue | Where-Object { $_.Path -like ''*Python311*'' } | Stop-Process -Force\")",
+      "Bash(powershell -Command \"Stop-Process -Id 7980, 36408 -Force -ErrorAction SilentlyContinue; Write-Host ''Stopped''\")",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8000,5173 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort, OwningProcess\")",
+      "Bash(pip install:*)",
+      "Bash(python -m uvicorn api.main:app --reload --port 8000)",
+      "Bash(curl -s http://localhost:8000/health)",
+      "Bash(curl -s http://localhost:8000/)",
+      "Bash(powershell -Command \"Stop-Process -Id 34620,6704,36408 -Force -ErrorAction SilentlyContinue; Write-Host ''Stopped''\")",
+      "Bash(powershell -Command \"Stop-Process -Id 34352,36408 -Force -ErrorAction SilentlyContinue; Write-Host ''Stopped''\")",
+      "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8000 -State Listen -ErrorAction SilentlyContinue | Select-Object LocalPort, OwningProcess\")",
+      "Bash(powershell -Command \"Stop-Process -Id 21656 -Force -ErrorAction SilentlyContinue; Write-Host ''Stopped''\")",
+      "Bash(curl -s http://localhost:8000/api/health)"
+    ],
+    "additionalDirectories": [
+      "C:\\Users\\leoma\\BathHack\\BathHack\\.claude"
+    ]
+  }
+}

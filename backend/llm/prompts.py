@@ -10,6 +10,10 @@ Imported by: llm/client.py
 from __future__ import annotations
 
 from simulation.types import DoctorContext, PatientContext, SimEvent, ArrivalContext
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from simulation.report_data import SimulationReport
 
 
 # ─── Doctor Decision Prompt ────────────────────────────────────────────────────
@@ -348,3 +352,100 @@ Respond with a JSON array ONLY — no commentary, no markdown fences, no extra t
 ]
 An empty array [] is valid if zero patients arrive (e.g. quiet early morning).
 Use null for fatal_wait_ticks if the condition is not life-threatening (e.g. sprained ankle, minor cut)."""
+
+
+# ─── Simulation Report Prompt ─────────────────────────────────────────────────
+
+def build_report_prompt(report: "SimulationReport") -> str:
+    """
+    Build the analysis prompt for end-of-simulation report generation.
+
+    Sends a compact structured data block (phase annotations + intervention
+    timeline + headline stats + selected events) to avoid context overflows
+    on long runs.
+    """
+    import json
+
+    # Phase table
+    phase_lines = []
+    for p in report.phases:
+        phase_lines.append(
+            f"  {p.label} (ticks {p.start_tick}–{p.end_tick}): "
+            f"avg_queue={p.avg_queue:.1f}, ICU={p.avg_icu_pct:.1f}%, "
+            f"general={p.avg_general_pct:.1f}%, discharges={p.discharges}, deaths={p.deaths}"
+        )
+    phases_text = "\n".join(phase_lines) if phase_lines else "  No distinct phases recorded."
+
+    # Intervention timeline (include metrics context ±10 ticks — just show the snapshot)
+    iv_lines = []
+    for r in report.interventions:
+        m = r.metrics_at_time
+        iv_lines.append(
+            f"  Tick {r.tick}: {r.intervention_type} {json.dumps(r.detail)} | "
+            f"queue={m.current_queue_length}, ICU={m.icu_occupancy_pct:.0f}%, "
+            f"general={m.general_ward_occupancy_pct:.0f}%, critical_waiting={m.critical_patients_waiting}"
+        )
+    iv_text = "\n".join(iv_lines) if iv_lines else "  No user interventions recorded."
+
+    # Up to 20 most severe events
+    notable = sorted(
+        [e for e in report.all_events if e.severity in ("critical", "warning")],
+        key=lambda e: e.tick,
+    )[-20:]
+    event_lines = [
+        f"  Tick {e.tick}: [{e.severity}] {e.event_type} — {e.raw_description}"
+        for e in notable
+    ]
+    events_text = "\n".join(event_lines) if event_lines else "  No critical events recorded."
+
+    data_block = f"""SIMULATION SUMMARY
+Duration: {report.total_ticks} ticks ({report.total_simulated_hours} simulated hours)
+Patients arrived: {report.total_arrived}
+Discharged: {report.total_discharged}
+Deceased: {report.total_deceased}
+Mortality rate: {report.final_mortality_rate_pct:.1f}%
+Avg wait time: {report.avg_wait_time_ticks:.1f} ticks
+Avg treatment time: {report.avg_treatment_time_ticks:.1f} ticks
+
+PEAK STRESS
+Peak queue length: {report.peak_queue_length}
+Peak ICU occupancy: {report.peak_icu_occupancy_pct:.1f}%
+Peak general ward occupancy: {report.peak_general_occupancy_pct:.1f}%
+Peak critical patients waiting: {report.peak_critical_waiting}
+
+PHASES
+{phases_text}
+
+INTERVENTION TIMELINE
+{iv_text}
+
+NOTABLE EVENTS (up to 20 most recent critical/warning)
+{events_text}"""
+
+    return f"""You are a hospital operations analyst. You have been given data from a simulated \
+hospital emergency department run. Write a clear, structured report for the simulation operator.
+
+{data_block}
+
+Write a professional report with the following sections using markdown formatting (##, **bold**, \
+bullet points). Be specific — reference the numbers provided. Write in a clinical/operational \
+analysis style.
+
+## Executive Summary
+2–3 sentences: overall performance verdict for this run.
+
+## Timeline Analysis
+Walk through each phase, describing how the hospital responded to events and interventions.
+
+## Impact of Interventions
+For each user action (surge, shortage, recovery, resource changes), describe what changed in \
+the metrics afterwards.
+
+## Resource Bottlenecks
+Identify which ward or resource was the binding constraint and when it became critical.
+
+## Patient Outcome Analysis
+Comment on the mortality rate, wait time trends, and what they indicate about system performance.
+
+## Lessons Learned
+3–5 bullet points of actionable takeaways specific to this run."""
