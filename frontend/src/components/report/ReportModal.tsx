@@ -10,7 +10,7 @@ interface Props {
 export const ReportModal: React.FC<Props> = ({ report, onClose }) => {
   const handleExport = useCallback(() => {
     const content = [
-      `Hospital Simulation Report`,
+      `C Clinic Report`,
       `Duration: ${report.total_ticks} ticks`,
       ``,
       `HEADLINE STATS`,

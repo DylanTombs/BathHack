@@ -93,7 +93,7 @@ async def lifespan(app: FastAPI):
     app.state.ws_manager = ws_manager
 
     task = asyncio.create_task(simulation_loop())
-    logger.info("Hospital Simulation API ready")
+    logger.info("C Clinic API ready")
     yield
     # Shutdown: cancel the loop and wait for it to stop
     task.cancel()
@@ -101,15 +101,15 @@ async def lifespan(app: FastAPI):
         await task
     except asyncio.CancelledError:
         pass
-    logger.info("Hospital Simulation API stopped")
+    logger.info("C Clinic API stopped")
 
 
 # ─── FastAPI app ──────────────────────────────────────────────────────────────
 
 app = FastAPI(
-    title="Hospital Simulation API",
+    title="C Clinic API",
     description=(
-        "Real-time hospital simulation WebSocket + REST server. "
+        "Real-time C Clinic WebSocket + REST server. "
         "Patients and doctors are AI agents; resources are constrained."
     ),
     version="0.1.0",
