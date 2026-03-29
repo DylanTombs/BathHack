@@ -11,7 +11,8 @@ const RECONNECT_DELAY_MS = 2000;
 export function useWebSocket() {
   const ws = useRef<WebSocket | null>(null);
   const reconnectTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-  const { applyState, setConnected, seedHistory, applyCommandAck, setReportGenerating, setReportReady } = useSimulationStore();
+  const { applyState, setConnected, seedHistory, applyCommandAck, setReportGenerating, setReportReady,
+    optimisticAddDoctor, optimisticRemoveDoctor, optimisticAddBed, optimisticRemoveBed } = useSimulationStore();
   const { setExplanation, setExplanationLoading } = useUIStore();
 
   const connect = useCallback(() => {
@@ -93,10 +94,22 @@ export function useWebSocket() {
   const startSim = useCallback(() => sendCommand({ command: 'start' }), [sendCommand]);
   const pauseSim = useCallback(() => sendCommand({ command: 'pause' }), [sendCommand]);
   const resetSim = useCallback(() => sendCommand({ command: 'reset' }), [sendCommand]);
-  const addDoctor = useCallback((specialty: string) => sendCommand({ command: 'add_doctor', specialty }), [sendCommand]);
-  const removeDoctor = useCallback(() => sendCommand({ command: 'remove_doctor' }), [sendCommand]);
-  const addBed = useCallback((ward: string, count: number = 1) => sendCommand({ command: 'add_bed', ward, count }), [sendCommand]);
-  const removeBed = useCallback((ward: string, count: number = 1) => sendCommand({ command: 'remove_bed', ward, count }), [sendCommand]);
+  const addDoctor = useCallback((specialty: string) => {
+    optimisticAddDoctor(specialty);
+    sendCommand({ command: 'add_doctor', specialty });
+  }, [sendCommand, optimisticAddDoctor]);
+  const removeDoctor = useCallback(() => {
+    optimisticRemoveDoctor();
+    sendCommand({ command: 'remove_doctor' });
+  }, [sendCommand, optimisticRemoveDoctor]);
+  const addBed = useCallback((ward: string, count: number = 1) => {
+    for (let i = 0; i < count; i++) optimisticAddBed(ward);
+    sendCommand({ command: 'add_bed', ward, count });
+  }, [sendCommand, optimisticAddBed]);
+  const removeBed = useCallback((ward: string, count: number = 1) => {
+    for (let i = 0; i < count; i++) optimisticRemoveBed(ward);
+    sendCommand({ command: 'remove_bed', ward, count });
+  }, [sendCommand, optimisticRemoveBed]);
   const generateReport = useCallback(() => sendCommand({ command: 'generate_report' }), [sendCommand]);
 
   const updateConfig = useCallback((config: Partial<ScenarioConfig>) => {
