@@ -77,7 +77,7 @@ export const ControlPanel: React.FC = () => {
         <button
           onClick={generateReport}
           disabled={!connected || reportState === 'generating'}
-          className="w-full py-2 px-3 rounded-lg text-sm font-medium bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+          className="mt-2 w-full py-2 px-3 rounded-lg text-sm font-medium bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
         >
           {reportState === 'generating' ? 'Generating Report…' : 'End & Generate Report'}
         </button>
