@@ -116,5 +116,6 @@ export function useWebSocket() {
     removeDoctor,
     addBed,
     removeBed,
+    generateReport,
   };
 }
