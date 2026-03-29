@@ -30,7 +30,9 @@
       "Bash(curl -s http://localhost:8000/api/health)",
       "Bash(python -c \"import openai\")",
       "Bash(powershell -Command \"Get-NetTCPConnection -LocalPort 8000 -State Listen | ForEach-Object { $p = $_.OwningProcess; Write-Host \"\"PID: $p\"\"; Stop-Process -Id $p -Force -ErrorAction SilentlyContinue }\")",
-      "Bash(git pull:*)"
+      "Bash(git pull:*)",
+      "Bash(pkill -f \"uvicorn api.main:app\")",
+      "Bash(pkill -f \"vite\")"
     ]
   }
 }

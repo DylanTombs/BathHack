@@ -70,40 +70,48 @@ function cyl(r, h, col, x, y, z) {
 }
 
 // ── exterior ─────────────────────────────────────────────────────────────────
-flat(400, 400, 0x4a7c59, 0, 0, 0);
-flat(108, 78, 0x8c8c8c, 0, 3, 0.01);
-flat(240, 14, 0x444444, 0, 65, 0.02);
-for (let x = -110; x < 115; x += 10) flat(4, 0.2, 0xffffff, x, 65, 0.03);
-flat(240, 0.25, 0xf59e0b, 0, 65, 0.03);
-flat(22, 14, 0xfb923c, 0, 35, 0.02, 0.35);
+flat(400, 400, 0x3d7a45, 0, 0, 0);              // lush grass
+flat(108, 78, 0x8a8a8a, 0, 3, 0.01);             // grounds tarmac
 
-// Parking bays
-for (let x = -48; x <= 48; x += 7) {
-  flat(6.5, 0.2, 0xffffff, x, 48, 0.03);
-  flat(6.5, 0.2, 0xffffff, x, 57, 0.03);
+// Entrance forecourt — sandstone paving plaza
+flat(32, 14, 0xcfc3a5, 0, 34, 0.02);
+flat(4, 14, 0xbab09a, 0, 34, 0.025);             // centre path accent strip
+
+// Garden beds flanking forecourt
+flat(9, 13, 0x3a6e28, -21, 34, 0.02);
+flat(9, 13, 0x3a6e28,  21, 34, 0.02);
+// Flower patches in garden beds
+flat(2.5, 2.5, 0xf472b6, -19, 31, 0.03);
+flat(2.5, 2.5, 0xfbbf24, -23, 37, 0.03);
+flat(2.5, 2.5, 0xf472b6,  19, 37, 0.03);
+flat(2.5, 2.5, 0xfbbf24,  23, 31, 0.03);
+flat(2, 2, 0xa78bfa, -21, 34, 0.03);
+flat(2, 2, 0xa78bfa,  21, 34, 0.03);
+
+// Access road from forecourt to car park
+flat(12, 14, 0x787878, 0, 50, 0.02);
+flat(11.6, 0.25, 0xc8c8c8, 0, 44, 0.03);        // road threshold line
+
+// Car park
+flat(92, 18, 0x737373, 0, 63, 0.02);
+for (let x = -42; x <= 42; x += 7) {
+  flat(6.5, 0.18, 0xe0e0e0, x, 58, 0.03);
+  flat(6.5, 0.18, 0xe0e0e0, x, 68, 0.03);
 }
+flat(92, 0.3, 0xc8c8c8, 0, 63, 0.03);           // car park centre divider
 
-// Trees
+// Trees — boundary, entrance garden, car park border
 [[-60,-28],[-60,0],[-60,28],[60,-28],[60,0],[60,28],
- [-28,-42],[0,-42],[28,-42],[-22,48],[0,48],[22,48]].forEach(([x,z]) => {
+ [-28,-42],[0,-42],[28,-42],
+ [-26,38],[-13,47],[13,47],[26,38],
+ [-44,63],[44,63]].forEach(([x,z]) => {
   box(0.9, 3.5, 0.9, 0x5d4037, x, 1.75, z);
   const c = new T.Mesh(new T.ConeGeometry(3, 5.5, 7),
     new T.MeshLambertMaterial({ color: 0x2e7d32 }));
   c.position.set(x, 7, z); scene.add(c);
 });
 
-// Ambulance
-box(5.5, 2.4, 2.8, 0xfafafa, -15, 1.2, 33);
-box(3, 1.8, 2.7, 0xfafafa, -12.5, 2.3, 33);
-box(5.3, 0.15, 2.6, 0xe53935, -15, 1.6, 33);
 const rcm = new T.MeshLambertMaterial({ color: 0xe53935, emissive: 0xe53935, emissiveIntensity: 0.4 });
-const acv = new T.Mesh(new T.BoxGeometry(0.25, 1.4, 0.1), rcm); acv.position.set(-17.7, 2.2, 33); scene.add(acv);
-const ach = new T.Mesh(new T.BoxGeometry(1.4, 0.25, 0.1), rcm); ach.position.set(-17.7, 2.2, 33); scene.add(ach);
-[[-16.5,32],[-13.5,32],[-16.5,34],[-13.5,34]].forEach(([x,z]) => {
-  const wh = new T.Mesh(new T.CylinderGeometry(0.55,0.55,0.4,12),
-    new T.MeshLambertMaterial({ color: 0x212121 }));
-  wh.rotation.z = Math.PI / 2; wh.position.set(x, 0.55, z); scene.add(wh);
-});
 
 // ── H-shaped building ─────────────────────────────────────────────────────────
 // Left bar:  x -38 to -14, z -24 to 24
@@ -514,6 +522,7 @@ window.addEventListener('message', ev => {
 
 // ── orbit ─────────────────────────────────────────────────────────────────────
 let down=false, ox=0, oy=0, theta=0.38, phi=0.65, r=90, bt=0.38, bp=0.65;
+let selId=null, selType=null;
 const dom = renderer.domElement;
 dom.addEventListener('mousedown', e => { down=true; ox=e.clientX; oy=e.clientY; bt=theta; bp=phi; });
 dom.addEventListener('mousemove', e => {
@@ -542,12 +551,23 @@ dom.addEventListener('click', e => {
     let o = h.object;
     while (o) {
       if (o.userData?.eid != null) {
-        window.parent.postMessage({ type: 'entity_click', entityType: o.userData.etype, entityId: o.userData.eid }, '*');
+        selId = o.userData.eid; selType = o.userData.etype;
+        const entMap = selType === 'patient' ? simPatients : simDoctors;
+        const entData = entMap.get(selId);
+        let nx = e.clientX / W, ny = e.clientY / H;
+        if (entData) {
+          const sp = new T.Vector3(entData.cx, 2.5, entData.cz).project(cam);
+          nx = (sp.x+1)/2; ny = (-sp.y+1)/2;
+        }
+        window.parent.postMessage({ type: 'entity_click', entityType: selType, entityId: selId, nx, ny }, '*');
         return;
       }
       o = o.parent;
     }
   }
+  // Clicked empty space — deselect
+  selId = null; selType = null;
+  window.parent.postMessage({ type: 'entity_deselect' }, '*');
 });
 
 (function loop() {
@@ -598,6 +618,15 @@ dom.addEventListener('click', e => {
     el.style.transform = 'translate(-50%,-50%) translate('+((v.x+1)/2*W)+'px,'+((-v.y+1)/2*H)+'px)';
     el.style.opacity = v.z < 1 ? '1' : '0';
   });
+  // Send selected entity's normalised screen position to parent every frame
+  if (selId !== null) {
+    const selMap = selType === 'patient' ? simPatients : simDoctors;
+    const sel = selMap.get(selId);
+    if (sel) {
+      const sp = new T.Vector3(sel.cx, 2.5, sel.cz).project(cam);
+      if (sp.z < 1) window.parent.postMessage({ type: 'entity_pos', nx: (sp.x+1)/2, ny: (-sp.y+1)/2 }, '*');
+    }
+  }
   renderer.render(scene, cam);
 })();
 </script>
