@@ -1,6 +1,7 @@
 import React, { useState, useCallback, useEffect } from 'react';
 import { useWebSocket } from '../../hooks/useWebSocket';
 import { useSimulationStore } from '../../store/simulationStore';
+import { ReportModal } from '../report/ReportModal';
 
 const SPECIALTIES = ['General', 'ICU', 'Triage'];
 
@@ -15,8 +16,11 @@ export const ControlPanel: React.FC = () => {
     severityLevel: storeSeverityLevel,
     surgeTicks,
     shortageTicks,
+    reportState,
+    report,
+    clearReport,
   } = useSimulationStore();
-  const { startSim, pauseSim, resetSim, triggerSurge, triggerShortage, triggerRecovery, updateConfig, addDoctor, removeDoctor, addBed, removeBed } = useWebSocket();
+  const { startSim, pauseSim, resetSim, triggerSurge, triggerShortage, triggerRecovery, updateConfig, addDoctor, removeDoctor, addBed, removeBed, generateReport } = useWebSocket();
   const [arrivalRate, setArrivalRate] = useState(1.5);
   const [severityLevel, setSeverityLevel] = useState(2);
   // Sync sliders from backend state
@@ -70,7 +74,18 @@ export const ControlPanel: React.FC = () => {
             ↺ Reset
           </button>
         </div>
+        <button
+          onClick={generateReport}
+          disabled={!connected || reportState === 'generating'}
+          className="w-full py-2 px-3 rounded-lg text-sm font-medium bg-indigo-100 text-indigo-700 hover:bg-indigo-200 disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+        >
+          {reportState === 'generating' ? 'Generating Report…' : 'End & Generate Report'}
+        </button>
       </div>
+
+      {reportState === 'ready' && report && (
+        <ReportModal report={report} onClose={clearReport} />
+      )}
 
       {/* Scenario buttons */}
       <div>
