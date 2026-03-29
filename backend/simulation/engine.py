@@ -145,9 +145,11 @@ class SimulationEngine:
 
         # Effective arrival rate (can be modified by apply_config or surge)
         self._arrival_rate: float = config.arrival_rate_per_tick
+        self._default_arrival_rate: float = config.arrival_rate_per_tick
 
         # Severity level (1=Mild, 2=Moderate, 3=Serious, 4=Critical)
         self._severity_level: int = 2
+        self._default_severity_level: int = 2
 
         self._init_doctors()
 
@@ -405,7 +407,9 @@ class SimulationEngine:
         self._surge_ticks_remaining = 0
         self._surge_arrival_multiplier = 1.0
         self._shortage_ticks_remaining = 0
-        self._arrival_rate = self.config.arrival_rate_per_tick
+        self._arrival_rate = self._default_arrival_rate
+        self.config.arrival_rate_per_tick = self._default_arrival_rate
+        self._severity_level = self._default_severity_level
         if self._benched_doctors:
             self.doctors.extend(self._benched_doctors)
             self._benched_doctors = []

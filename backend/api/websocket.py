@@ -187,6 +187,8 @@ async def _handle_command(
 
     elif command == "trigger_recovery":
         engine.trigger_recovery()
+        state = engine.get_state()
+        await manager.broadcast_state(state)
 
     elif command == "update_config":
         raw_config = msg.get("config", {})
