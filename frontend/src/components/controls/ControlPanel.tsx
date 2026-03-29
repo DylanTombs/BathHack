@@ -30,6 +30,14 @@ export const ControlPanel: React.FC = () => {
   const [selectedSpecialty, setSelectedSpecialty] = useState('General');
   const [selectedWard, setSelectedWard] = useState<'general_ward' | 'icu'>('general_ward');
   const [pending, setPending] = useState(false);
+  const [pendingScenario, setPendingScenario] = useState<string | null>(null);
+
+  // Clear queued indicator once backend confirms the scenario has changed
+  useEffect(() => {
+    if (pendingScenario && scenario === pendingScenario) {
+      setPendingScenario(null);
+    }
+  }, [scenario, pendingScenario]);
 
   const handleStartPause = useCallback(() => {
     if (pending || !connected) return;
@@ -92,22 +100,34 @@ export const ControlPanel: React.FC = () => {
         <h3 className="text-xs font-semibold text-gray-500 uppercase mb-2">Scenarios</h3>
         <div className="grid grid-cols-3 gap-2">
           <button
-            onClick={triggerSurge}
-            className="py-2 px-2 rounded-lg text-xs font-medium bg-red-100 text-red-700 hover:bg-red-200 transition-colors"
+            onClick={() => { triggerSurge(); setPendingScenario('surge'); }}
+            className={`py-2 px-2 rounded-lg text-xs font-medium transition-colors ${
+              pendingScenario === 'surge'
+                ? 'bg-red-200 text-red-800 animate-pulse'
+                : 'bg-red-100 text-red-700 hover:bg-red-200'
+            }`}
           >
-            {surgeTicks > 0 ? `${surgeTicks * 15} min` : 'Surge'}
+            {pendingScenario === 'surge' ? 'Queued…' : surgeTicks > 0 ? `${surgeTicks * 15} min` : 'Surge'}
           </button>
           <button
-            onClick={triggerShortage}
-            className="py-2 px-2 rounded-lg text-xs font-medium bg-orange-100 text-orange-700 hover:bg-orange-200 transition-colors"
+            onClick={() => { triggerShortage(); setPendingScenario('shortage'); }}
+            className={`py-2 px-2 rounded-lg text-xs font-medium transition-colors ${
+              pendingScenario === 'shortage'
+                ? 'bg-orange-200 text-orange-800 animate-pulse'
+                : 'bg-orange-100 text-orange-700 hover:bg-orange-200'
+            }`}
           >
-            {shortageTicks > 0 ? `${shortageTicks * 15} min` : 'Shortage'}
+            {pendingScenario === 'shortage' ? 'Queued…' : shortageTicks > 0 ? `${shortageTicks * 15} min` : 'Shortage'}
           </button>
           <button
-            onClick={triggerRecovery}
-            className="py-2 px-2 rounded-lg text-xs font-medium bg-blue-100 text-blue-700 hover:bg-blue-200 transition-colors"
+            onClick={() => { triggerRecovery(); setPendingScenario('normal'); }}
+            className={`py-2 px-2 rounded-lg text-xs font-medium transition-colors ${
+              pendingScenario === 'normal'
+                ? 'bg-blue-200 text-blue-800 animate-pulse'
+                : 'bg-blue-100 text-blue-700 hover:bg-blue-200'
+            }`}
           >
-            Normal
+            {pendingScenario === 'normal' ? 'Queued…' : 'Normal'}
           </button>
         </div>
         {scenario !== 'normal' && (

@@ -70,7 +70,6 @@ class DoctorAgent:
     def __init__(self, doctor: Doctor, llm_callback=None) -> None:
         self.doctor = doctor
         self._llm_callback = llm_callback
-        self._last_llm_tick: int = -DOCTOR_LLM_COOLDOWN_TICKS  # ready to call immediately
 
     # ── Public API ────────────────────────────────────────────────────────────
 
@@ -119,7 +118,6 @@ class DoctorAgent:
         if self._should_call_llm_for_decision(tick, candidates, hospital):
             chosen = await self._llm_decide(candidates, tick, hospital)
             if chosen is not None:
-                self._last_llm_tick = tick
                 return chosen
             # Fall through to rule-based
 
@@ -151,37 +149,8 @@ class DoctorAgent:
         candidates: list["PatientAgent"],
         hospital: "Hospital",
     ) -> bool:
-        """
-        Call LLM only under genuine pressure, with a per-doctor cooldown.
-        Triggers when ANY of:
-          - ≥2 critical patients are waiting (triage urgency)
-          - ICU is full AND a critical patient is stranded in general ward
-          - This doctor's workload is 'overwhelmed'
-        """
-        if self._llm_callback is None:
-            return False
-
-        # Per-doctor cooldown
-        if tick - self._last_llm_tick < DOCTOR_LLM_COOLDOWN_TICKS:
-            return False
-
-        # Trigger: multiple critical patients competing for attention
-        critical_count = sum(1 for pa in candidates if pa.patient.severity == "critical")
-        if critical_count >= 2:
-            return True
-
-        # Trigger: ICU full with a critical patient stuck in general ward
-        if hospital.is_ward_full("icu") and any(
-            pa.patient.severity == "critical" and pa.patient.location == "general_ward"
-            for pa in candidates
-        ):
-            return True
-
-        # Trigger: overwhelmed workload — LLM can help deprioritise
-        if self.doctor.workload == "overwhelmed":
-            return True
-
-        return False
+        """Use LLM for every decision when available."""
+        return self._llm_callback is not None
 
     async def _llm_decide(
         self,
@@ -226,6 +195,7 @@ class DoctorAgent:
         chosen._pending_doctor_reason = decision.reason
         chosen._pending_doctor_confidence = decision.confidence
         chosen._pending_decision_action = decision.action
+        chosen._pending_llm_used = not decision.fallback_used
         if decision.discharge_stay_ticks is not None:
             chosen._pending_discharge_stay = decision.discharge_stay_ticks
         if decision.discharge_severity is not None:
@@ -247,6 +217,7 @@ class DoctorAgent:
         d = self.doctor
 
         explanation = getattr(patient, "_pending_doctor_reason", None)
+        llm_used = getattr(patient, "_pending_llm_used", False)
         confidence = getattr(patient, "_pending_doctor_confidence", None)
         action = getattr(patient, "_pending_decision_action", "treat")
         # Guard: triage doctors must NEVER treat critical/medium patients in waiting room
@@ -256,14 +227,14 @@ class DoctorAgent:
         discharge_severity = getattr(patient, "_pending_discharge_severity", None)
         discharge_condition = getattr(patient, "_pending_discharge_condition", None)
         treatment_ticks = getattr(patient, "_pending_treatment_ticks", None)
-        for attr in ("_pending_doctor_reason", "_pending_doctor_confidence",
+        for attr in ("_pending_doctor_reason", "_pending_llm_used", "_pending_doctor_confidence",
                      "_pending_decision_action", "_pending_discharge_stay",
                      "_pending_discharge_severity", "_pending_discharge_condition",
                      "_pending_treatment_ticks"):
             if hasattr(patient, attr):
                 delattr(patient, attr)
 
-        # Store last decision on the doctor for UI display
+        # Store last decision on the doctor panel (always show something)
         d.decisions_made += 1
         if explanation is None:
             sev = p.severity
@@ -305,7 +276,7 @@ class DoctorAgent:
             entity_id=d.id,
             entity_type="doctor",
             raw_description=raw_desc,
-            llm_explanation=explanation,
+            llm_explanation=explanation if llm_used else None,
             severity=(
                 "critical" if p.severity == "critical"
                 else "warning" if p.severity == "medium"
